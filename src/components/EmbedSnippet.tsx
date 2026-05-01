@@ -7,8 +7,8 @@ function buildIframeSnippet(): string {
   src="${src}"
   title="MyMusics"
   width="100%"
-  height="420"
-  style="max-width:420px;border:0;border-radius:12px"
+  height="500"
+  style="max-width:380px;border:0;border-radius:12px"
   loading="lazy"
 ></iframe>`;
 }

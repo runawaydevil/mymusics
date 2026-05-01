@@ -85,3 +85,15 @@ audio:focus-visible {
   outline: 2px solid var(--logo-gold);
   outline-offset: 3px;
 }
+
+/* /embed iframe: avoid min-height:100vh forcing scroll inside short iframes */
+html.embed-active,
+html.embed-active body,
+html.embed-active #root {
+  min-height: 0 !important;
+  height: auto;
+}
+
+html.embed-active body {
+  overflow-x: hidden;
+}

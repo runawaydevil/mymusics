@@ -1,8 +1,18 @@
+import { useEffect } from "react";
 import { CozyAudioBar } from "../components/CozyAudioBar";
 import { useMyMusicsPlayback } from "../hooks/useMyMusicsPlayback";
 import "../App.css";
 
+const EMBED_ROOT_CLASS = "embed-active";
+
 export default function Embed() {
+  useEffect(() => {
+    document.documentElement.classList.add(EMBED_ROOT_CLASS);
+    return () => {
+      document.documentElement.classList.remove(EMBED_ROOT_CLASS);
+    };
+  }, []);
+
   const {
     audioRef,
     track,

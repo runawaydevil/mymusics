@@ -1,10 +1,34 @@
-import { type ChangeEvent, type RefObject, useCallback, useEffect, useState } from "react";
+import { type FormEvent, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
   const m = Math.floor(seconds / 60);
   const sec = Math.floor(seconds % 60);
   return `${m}:${sec.toString().padStart(2, "0")}`;
+}
+
+function formatDurationLabel(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "--:--";
+  return formatTime(seconds);
+}
+
+/** Duration from element metadata or seekable ranges (streaming MP3). */
+function safeDuration(el: HTMLAudioElement): number {
+  const d = el.duration;
+  if (Number.isFinite(d) && d > 0 && d !== Number.POSITIVE_INFINITY) {
+    return d;
+  }
+  try {
+    if (el.seekable && el.seekable.length > 0) {
+      const end = el.seekable.end(el.seekable.length - 1);
+      if (Number.isFinite(end) && end > 0 && end !== Number.POSITIVE_INFINITY) {
+        return end;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return 0;
 }
 
 type Props = {
@@ -18,46 +42,88 @@ export function CozyAudioBar({ audioRef, disabled }: Props) {
   const [duration, setDuration] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
+  const scrubbingRef = useRef(false);
 
   useEffect(() => {
     const el = audioRef.current;
     if (!el) return;
 
+    const syncDuration = () => {
+      setDuration(safeDuration(el));
+    };
+
     const syncFromElement = () => {
-      setCurrentTime(el.currentTime);
-      const d = el.duration;
-      setDuration(Number.isFinite(d) && d > 0 ? d : 0);
+      if (!scrubbingRef.current) {
+        setCurrentTime(el.currentTime);
+      }
+      syncDuration();
       setPlaying(!el.paused);
       setMuted(el.muted);
     };
 
-    const onTimeUpdate = () => setCurrentTime(el.currentTime);
+    const onTimeUpdate = () => {
+      if (!scrubbingRef.current) {
+        setCurrentTime(el.currentTime);
+      }
+    };
+
     const onLoadedMeta = () => syncFromElement();
+    const onProgress = () => syncDuration();
+    const onLoadedData = () => syncDuration();
+    const onCanPlay = () => syncDuration();
+    const onSeeked = () => {
+      scrubbingRef.current = false;
+      setCurrentTime(el.currentTime);
+      syncDuration();
+    };
+    const onSeeking = () => {
+      setCurrentTime(el.currentTime);
+    };
     const onPlay = () => setPlaying(true);
     const onPause = () => setPlaying(false);
     const onVol = () => setMuted(el.muted);
 
     el.addEventListener("timeupdate", onTimeUpdate);
     el.addEventListener("loadedmetadata", onLoadedMeta);
-    el.addEventListener("durationchange", onLoadedMeta);
+    el.addEventListener("durationchange", syncDuration);
+    el.addEventListener("progress", onProgress);
+    el.addEventListener("loadeddata", onLoadedData);
+    el.addEventListener("canplay", onCanPlay);
+    el.addEventListener("seeked", onSeeked);
+    el.addEventListener("seeking", onSeeking);
     el.addEventListener("play", onPlay);
     el.addEventListener("pause", onPause);
     el.addEventListener("volumechange", onVol);
 
     syncFromElement();
 
+    const endScrub = () => {
+      scrubbingRef.current = false;
+      setCurrentTime(el.currentTime);
+    };
+    window.addEventListener("pointerup", endScrub);
+    window.addEventListener("pointercancel", endScrub);
+
     return () => {
       el.removeEventListener("timeupdate", onTimeUpdate);
       el.removeEventListener("loadedmetadata", onLoadedMeta);
-      el.removeEventListener("durationchange", onLoadedMeta);
+      el.removeEventListener("durationchange", syncDuration);
+      el.removeEventListener("progress", onProgress);
+      el.removeEventListener("loadeddata", onLoadedData);
+      el.removeEventListener("canplay", onCanPlay);
+      el.removeEventListener("seeked", onSeeked);
+      el.removeEventListener("seeking", onSeeking);
       el.removeEventListener("play", onPlay);
       el.removeEventListener("pause", onPause);
       el.removeEventListener("volumechange", onVol);
+      window.removeEventListener("pointerup", endScrub);
+      window.removeEventListener("pointercancel", endScrub);
     };
   }, [audioRef]);
 
+  const dur = duration;
   const pct =
-    duration > 0 && Number.isFinite(duration) ? Math.min(100, (currentTime / duration) * 100) : 0;
+    dur > 0 && Number.isFinite(dur) ? Math.min(100, Math.max(0, (currentTime / dur) * 100)) : 0;
 
   const togglePlay = useCallback(() => {
     const el = audioRef.current;
@@ -66,16 +132,28 @@ export function CozyAudioBar({ audioRef, disabled }: Props) {
     else el.pause();
   }, [audioRef, disabled]);
 
-  const onSeek = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => {
+  const applySeekPercent = useCallback(
+    (pctValue: number) => {
       const el = audioRef.current;
-      if (!el || disabled || duration <= 0) return;
-      const next = (parseFloat(e.target.value) / 100) * duration;
+      if (!el || disabled || dur <= 0) return;
+      const clamped = Math.min(100, Math.max(0, pctValue));
+      const next = (clamped / 100) * dur;
       el.currentTime = next;
       setCurrentTime(next);
     },
-    [audioRef, disabled, duration],
+    [audioRef, disabled, dur],
   );
+
+  const onSeek = useCallback(
+    (e: FormEvent<HTMLInputElement>) => {
+      applySeekPercent(parseFloat(e.currentTarget.value));
+    },
+    [applySeekPercent],
+  );
+
+  const startScrub = useCallback(() => {
+    scrubbingRef.current = true;
+  }, []);
 
   const toggleMute = useCallback(() => {
     const el = audioRef.current;
@@ -84,8 +162,9 @@ export function CozyAudioBar({ audioRef, disabled }: Props) {
     setMuted(el.muted);
   }, [audioRef, disabled]);
 
-  const durLabel = formatTime(duration);
+  const durLabel = formatDurationLabel(dur);
   const curLabel = formatTime(currentTime);
+  const seekDisabled = disabled || dur <= 0;
 
   return (
     <div
@@ -119,10 +198,12 @@ export function CozyAudioBar({ audioRef, disabled }: Props) {
           className="cozy-player__scrub"
           min={0}
           max={100}
-          step={0.25}
+          step={0.05}
           value={pct}
+          onPointerDown={startScrub}
+          onInput={onSeek}
           onChange={onSeek}
-          disabled={disabled || duration <= 0}
+          disabled={seekDisabled}
           aria-label="Seek"
           aria-valuemin={0}
           aria-valuemax={100}
