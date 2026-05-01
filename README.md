@@ -77,6 +77,36 @@ server {
 
 No extra `vite.config` base URL is needed when the site is served at the domain root.
 
+## Troubleshooting
+
+### HTTP 503 on `/api/track/random` (“No tracks available”)
+
+The API returns **503** only when the in-memory track pool is **empty** (`trackCount: 0`). The browser request is reaching Node; fix **metadata path and env** on the server.
+
+1. **On the VPS (SSH)**, call health locally (replace `38471` if you use another `PORT`):
+
+   ```bash
+   curl -sS http://127.0.0.1:38471/api/health
+   ```
+
+   Check `metadataTsv`, `metadataExists`, `metadataSizeBytes`, `trackCount`, `tracksReady`, and `hint`.
+
+2. **Align `METADATA_TSV`** with the real file (e.g. `/opt/mymusics/data/metadata.tsv`). Wrong paths such as `/opt/data/metadata.tsv` look “almost right” but **fail** if the file lives under the app directory. Alternatively **remove** `METADATA_TSV` from `.env` / PM2 so the app uses the default `data/metadata.tsv` next to the project.
+
+3. **Restart the process** after editing env so variables reload:
+
+   ```bash
+   pm2 restart mymusics --update-env
+   ```
+
+   (Use your PM2 app name if different.)
+
+4. Re-run `curl` until `tracksReady` is `true` and `trackCount` > 0.
+
+### Console: `content.js` and TensorFlow / WebGL kernel messages
+
+Messages like **“The kernel '…' for backend 'webgl' is already registered”** in **`content.js`** come from a **browser extension** (not from MyMusics). To verify the site without that noise, use a **private/incognito window** with extensions disabled for that window, or temporarily disable extensions.
+
 ## Playback notes
 
 - The browser loads audio directly from `https://archive.org/download/...` URLs. First play may be slow while the Archive serves the file from inside large ZIPs.

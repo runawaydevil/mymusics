@@ -160,6 +160,45 @@
   font-weight: 500;
 }
 
+.health-banner {
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.1rem;
+  border-radius: 12px;
+  border: 2px solid color-mix(in srgb, var(--orange) 55%, transparent);
+  background: color-mix(in srgb, var(--orange) 12%, var(--panel));
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
+}
+
+.health-banner strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--yellow);
+  font-size: 0.95rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.health-banner p {
+  margin: 0 0 0.65rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.health-banner p:last-child {
+  margin-bottom: 0;
+}
+
+.health-banner-hint {
+  color: var(--muted);
+  font-size: 0.82rem !important;
+}
+
+.health-banner code {
+  font-size: 0.8em;
+  color: var(--sky);
+}
+
 .footer {
   margin-top: 2.5rem;
   text-align: center;

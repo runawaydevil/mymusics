@@ -14,12 +14,21 @@ type RandomResponse = {
 
 type ErrBody = { error?: string };
 
+type HealthBody = {
+  tracksReady?: boolean;
+  hint?: string;
+  metadataTsv?: string;
+  metadataExists?: boolean;
+  trackCount?: number;
+};
+
 export default function App() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [track, setTrack] = useState<TrackInfo | null>(null);
   const [status, setStatus] = useState<string>("");
   const [history, setHistory] = useState<TrackInfo[]>([]);
   const [autoPlay, setAutoPlay] = useState(true);
+  const [healthWarn, setHealthWarn] = useState<string | null>(null);
 
   const playUrl = useCallback((url: string) => {
     const a = audioRef.current;
@@ -61,6 +70,32 @@ export default function App() {
   }, [playUrl]);
 
   useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/health");
+        const h = (await res.json()) as HealthBody;
+        if (!h.tracksReady) {
+          const parts = [
+            h.hint,
+            h.metadataTsv && `Path: ${h.metadataTsv}`,
+            h.metadataExists === false && "File not found at configured path.",
+            typeof h.trackCount === "number" && `Tracks loaded: ${h.trackCount}.`,
+          ].filter(Boolean);
+          setHealthWarn(
+            parts.length > 0
+              ? parts.join(" ")
+              : "No tracks loaded. Check server metadata and /api/health.",
+          );
+        } else {
+          setHealthWarn(null);
+        }
+      } catch {
+        setHealthWarn(null);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional mount bootstrap
     void loadNext();
   }, [loadNext]);
@@ -71,6 +106,17 @@ export default function App() {
 
   return (
     <div className="page">
+      {healthWarn ? (
+        <div className="health-banner" role="alert">
+          <strong>Server metadata</strong>
+          <p>{healthWarn}</p>
+          <p className="health-banner-hint">
+            On the host, run <code>curl -sS http://127.0.0.1:38471/api/health</code> (adjust
+            port) and fix <code>METADATA_TSV</code> or remove it to use the default{" "}
+            <code>data/metadata.tsv</code>.
+          </p>
+        </div>
+      ) : null}
       <header className="header">
         <img
           className="logo"
