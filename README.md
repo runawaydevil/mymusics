@@ -91,7 +91,7 @@ The API returns **503** only when the in-memory track pool is **empty** (`trackC
 
    Check `metadataTsv`, `metadataExists`, `metadataSizeBytes`, `trackCount`, `tracksReady`, and `hint`.
 
-2. **Align `METADATA_TSV`** with the real file (e.g. `/opt/mymusics/data/metadata.tsv`). Wrong paths such as `/opt/data/metadata.tsv` look “almost right” but **fail** if the file lives under the app directory. Alternatively **remove** `METADATA_TSV` from `.env` / PM2 so the app uses the default `data/metadata.tsv` next to the project.
+2. **Align `METADATA_TSV`** with the real file (e.g. `/opt/mymusics/data/metadata.tsv`). Wrong paths such as `/opt/data/metadata.tsv` look “almost right” but **fail** if the file lives under the app directory. Alternatively **remove** `METADATA_TSV` from `.env` / PM2 so the app uses the default `data/metadata.tsv` next to the project. If the env path is missing but **`data/metadata.tsv` exists inside the app**, the server **falls back** to that file automatically and logs a warning (you should still fix `.env` to avoid confusion).
 
 3. **Restart the process** after editing env so variables reload:
 

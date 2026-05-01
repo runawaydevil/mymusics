@@ -25,9 +25,34 @@ function resolvePath(p: string): string {
 const PORT = resolveApiPort(process.env);
 /** Resolved path to data/metadata.tsv next to the app (independent of METADATA_TSV env). */
 const BUNDLED_METADATA_TSV = path.join(__dirname, "..", "data", "metadata.tsv");
-const METADATA_TSV = process.env.METADATA_TSV
-  ? resolvePath(process.env.METADATA_TSV.trim())
-  : BUNDLED_METADATA_TSV;
+
+/** If METADATA_TSV points to a missing file but the bundled copy exists, use bundled (VPS typo self-heal). */
+function resolveEffectiveMetadataTsv(): {
+  path: string;
+  envRequested: string | null;
+  usedFallback: boolean;
+} {
+  const raw = process.env.METADATA_TSV?.trim();
+  if (!raw) {
+    return { path: BUNDLED_METADATA_TSV, envRequested: null, usedFallback: false };
+  }
+  const resolved = resolvePath(raw);
+  if (fs.existsSync(resolved)) {
+    return { path: resolved, envRequested: resolved, usedFallback: false };
+  }
+  if (fs.existsSync(BUNDLED_METADATA_TSV)) {
+    console.warn(
+      `MyMusics: METADATA_TSV not found at ${resolved}; using bundled ${BUNDLED_METADATA_TSV}`,
+    );
+    return { path: BUNDLED_METADATA_TSV, envRequested: resolved, usedFallback: true };
+  }
+  return { path: resolved, envRequested: resolved, usedFallback: false };
+}
+
+const _meta = resolveEffectiveMetadataTsv();
+const METADATA_TSV = _meta.path;
+const METADATA_ENV_REQUESTED = _meta.envRequested;
+const METADATA_USED_FALLBACK = _meta.usedFallback;
 
 function hintForMetadataNotFound(message: string): string {
   if (!message.includes("not found")) return message;
@@ -91,7 +116,9 @@ function randomTrack(): TrackMeta | null {
 
 async function main() {
   console.info(`MyMusics: cwd=${process.cwd()}`);
-  console.info(`MyMusics: METADATA_TSV resolved to ${METADATA_TSV}`);
+  console.info(
+    `MyMusics: metadata file ${METADATA_TSV}${METADATA_USED_FALLBACK ? ` (fallback; env had ${METADATA_ENV_REQUESTED})` : ""}`,
+  );
   try {
     rebuildPool();
   } catch (e) {
@@ -116,6 +143,9 @@ async function main() {
       trackCount: pool.length,
       tracksReady: pool.length > 0,
       metadataTsv: METADATA_TSV,
+      ...(METADATA_ENV_REQUESTED && METADATA_ENV_REQUESTED !== METADATA_TSV
+        ? { metadataEnvRequested: METADATA_ENV_REQUESTED, metadataUsedFallback: METADATA_USED_FALLBACK }
+        : {}),
       metadataExists: fs.existsSync(METADATA_TSV),
       metadataSizeBytes,
       cwd: process.cwd(),

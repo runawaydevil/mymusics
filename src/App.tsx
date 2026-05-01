@@ -18,6 +18,8 @@ type HealthBody = {
   tracksReady?: boolean;
   hint?: string;
   metadataTsv?: string;
+  metadataEnvRequested?: string;
+  metadataUsedFallback?: boolean;
   metadataExists?: boolean;
   trackCount?: number;
 };
@@ -29,6 +31,7 @@ export default function App() {
   const [history, setHistory] = useState<TrackInfo[]>([]);
   const [autoPlay, setAutoPlay] = useState(true);
   const [healthWarn, setHealthWarn] = useState<string | null>(null);
+  const [healthInfo, setHealthInfo] = useState<string | null>(null);
 
   const playUrl = useCallback((url: string) => {
     const a = audioRef.current;
@@ -75,6 +78,7 @@ export default function App() {
         const res = await fetch("/api/health");
         const h = (await res.json()) as HealthBody;
         if (!h.tracksReady) {
+          setHealthInfo(null);
           const parts = [
             h.hint,
             h.metadataTsv && `Path: ${h.metadataTsv}`,
@@ -88,6 +92,13 @@ export default function App() {
           );
         } else {
           setHealthWarn(null);
+          if (h.metadataUsedFallback && h.metadataEnvRequested && h.metadataTsv) {
+            setHealthInfo(
+              `METADATA_TSV was not found at ${h.metadataEnvRequested}. Using bundled file at ${h.metadataTsv}. Remove or fix METADATA_TSV in .env / PM2.`,
+            );
+          } else {
+            setHealthInfo(null);
+          }
         }
       } catch {
         setHealthWarn(null);
@@ -115,6 +126,12 @@ export default function App() {
             port) and fix <code>METADATA_TSV</code> or remove it to use the default{" "}
             <code>data/metadata.tsv</code>.
           </p>
+        </div>
+      ) : null}
+      {healthInfo ? (
+        <div className="health-info" role="status">
+          <strong>Metadata path</strong>
+          <p>{healthInfo}</p>
         </div>
       ) : null}
       <header className="header">

@@ -199,6 +199,31 @@
   color: var(--sky);
 }
 
+.health-info {
+  margin-bottom: 1.25rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--sky) 40%, transparent);
+  background: color-mix(in srgb, var(--sky) 8%, var(--panel));
+}
+
+.health-info strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--sky);
+  font-size: 0.85rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.health-info p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--muted);
+  word-break: break-word;
+}
+
 .footer {
   margin-top: 2.5rem;
   text-align: center;
