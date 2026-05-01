@@ -103,13 +103,14 @@ The API returns **503** only when the in-memory track pool is **empty** (`trackC
 
 4. Re-run `curl` until `tracksReady` is `true` and `trackCount` > 0.
 
-### Console: `content.js` and TensorFlow / WebGL kernel messages
+### Console: `content.js`, `classifier.js`, and TensorFlow / WebGL kernel messages
 
-Messages like **“The kernel '…' for backend 'webgl' is already registered”** in **`content.js`** come from a **browser extension** (not from MyMusics). To verify the site without that noise, use a **private/incognito window** with extensions disabled for that window, or temporarily disable extensions.
+Messages such as **“The kernel '…' for backend 'cpu' / 'webgl' is already registered”** (often under **`content.js`**) or **“Platform browser has already been set”** (under **`classifier.js`**) come from **browser extensions** that bundle TensorFlow.js — **not from MyMusics** (this repo does not ship TensorFlow). To confirm, open a **private/incognito** window with extensions disabled for that session, or turn extensions off temporarily.
 
 ## Playback notes
 
 - The browser loads audio directly from `https://archive.org/download/...` URLs. First play may be slow while the Archive serves the file from inside large ZIPs.
+- **HTTP 503 (or other failures) on the MP3 URL** come from **Internet Archive** (overload, ZIP member extraction, etc.), not from this app’s API. The player may auto-skip to another random track a few times; use **Next** if streaming keeps failing.
 - This is **not** DRM; users can still capture network traffic or use devtools.
 
 ## Scripts

@@ -22,8 +22,11 @@ type HealthBody = {
   trackCount?: number;
 };
 
+const MAX_ARCHIVE_STREAM_ERRORS = 3;
+
 export default function App() {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const archiveStreamErrorsRef = useRef(0);
   const [track, setTrack] = useState<TrackInfo | null>(null);
   const [status, setStatus] = useState<string>("");
   const [history, setHistory] = useState<TrackInfo[]>([]);
@@ -66,6 +69,29 @@ export default function App() {
       setStatus("Network error while requesting a track.");
     }
   }, [playUrl]);
+
+  const handleAudioPlaying = useCallback(() => {
+    archiveStreamErrorsRef.current = 0;
+    setStatus("");
+  }, []);
+
+  const handleAudioError = useCallback(() => {
+    archiveStreamErrorsRef.current += 1;
+    const n = archiveStreamErrorsRef.current;
+    if (n >= MAX_ARCHIVE_STREAM_ERRORS) {
+      setStatus(
+        "Internet Archive could not stream several tracks in a row (e.g. 503). Try Next or wait.",
+      );
+      return;
+    }
+    setStatus("This track is not available from the Archive right now; trying another…");
+    if (autoPlay) void loadNext();
+  }, [autoPlay, loadNext]);
+
+  const requestNextTrack = useCallback(() => {
+    archiveStreamErrorsRef.current = 0;
+    void loadNext();
+  }, [loadNext]);
 
   useEffect(() => {
     void (async () => {
@@ -145,10 +171,12 @@ export default function App() {
             controlsList="nodownload noplaybackrate"
             preload="metadata"
             onEnded={onEnded}
+            onPlaying={handleAudioPlaying}
+            onError={handleAudioError}
           />
 
           <div className="actions">
-            <button type="button" className="btn primary" onClick={() => void loadNext()}>
+            <button type="button" className="btn primary" onClick={() => void requestNextTrack()}>
               Next
             </button>
             <label className="check">
