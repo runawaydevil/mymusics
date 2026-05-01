@@ -49,10 +49,18 @@ function resolveEffectiveMetadataTsv(): {
   return { path: resolved, envRequested: resolved, usedFallback: false };
 }
 
-const _meta = resolveEffectiveMetadataTsv();
-const METADATA_TSV = _meta.path;
-const METADATA_ENV_REQUESTED = _meta.envRequested;
-const METADATA_USED_FALLBACK = _meta.usedFallback;
+/** Set at runtime in `main()` (and on `/api/reload`) so env matches PM2/dotenv; avoids load-time races. */
+let METADATA_TSV = "";
+let METADATA_ENV_REQUESTED: string | null = null;
+let METADATA_USED_FALLBACK = false;
+
+function applyMetadataPathsFromEnv() {
+  dotenv.config({ path: path.join(__dirname, "..", ".env") });
+  const m = resolveEffectiveMetadataTsv();
+  METADATA_TSV = m.path;
+  METADATA_ENV_REQUESTED = m.envRequested;
+  METADATA_USED_FALLBACK = m.usedFallback;
+}
 
 function hintForMetadataNotFound(message: string): string {
   if (!message.includes("not found")) return message;
@@ -115,6 +123,7 @@ function randomTrack(): TrackMeta | null {
 }
 
 async function main() {
+  applyMetadataPathsFromEnv();
   console.info(`MyMusics: cwd=${process.cwd()}`);
   console.info(
     `MyMusics: metadata file ${METADATA_TSV}${METADATA_USED_FALLBACK ? ` (fallback; env had ${METADATA_ENV_REQUESTED})` : ""}`,
@@ -156,6 +165,7 @@ async function main() {
 
   app.post("/api/reload", async (_req, reply) => {
     try {
+      applyMetadataPathsFromEnv();
       const next = loadTracksFromTsv(METADATA_TSV, IA_ITEM_ID);
       pool = next;
       console.info(`MyMusics: reloaded ${pool.length} tracks from metadata`);
