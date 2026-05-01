@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { CozyAudioBar } from "../components/CozyAudioBar";
+import { PUBLIC_SITE_URL } from "../config/siteUrl";
 import { useMyMusicsPlayback } from "../hooks/useMyMusicsPlayback";
 import "../App.css";
 
@@ -103,6 +104,25 @@ export default function Embed() {
             {status && track ? <p className="hint">{status}</p> : null}
           </div>
         </article>
+
+        <div className="embed-brand">
+          <a
+            className="embed-brand-link"
+            href={PUBLIC_SITE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="MyMusics"
+          >
+            <img
+              className="embed-brand-logo"
+              src="/mymusics.png"
+              alt="MyMusics"
+              width={200}
+              height={80}
+              decoding="async"
+            />
+          </a>
+        </div>
       </div>
     </div>
   );
