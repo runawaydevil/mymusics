@@ -14,7 +14,7 @@ Retro-styled web player that picks random tracks from [`metadata.tsv`](../data/m
    - `METADATA_TSV` — path to `metadata.tsv` (default: `../data/metadata.tsv` relative to this folder).
    - **Ports** — defined in [`config/ports.ts`](config/ports.ts) as paired pools. Use `PORT_INDEX` (0–3) to pick a pair, or set `PORT` / `VITE_DEV_PORT` explicitly. Defaults: API `38471`, Vite dev `38472` (index 0).
    - `IA_ITEM_ID` (optional) — Internet Archive item id (default `myspace_dragon_hoard_2010`).
-   - `SERVE_STATIC` — set to `true` in production so Fastify serves `dist/` and `/api` on one port (required for PM2 single-process deploy).
+   - `SERVE_STATIC` — if `dist/index.html` exists after `npm run build`, the app serves the SPA + `/api` automatically. Set `SERVE_STATIC=false` for API-only. Explicit `true`/`1` is optional; use it when you want a clear flag in PM2/systemd.
 
 2. Install dependencies:
 

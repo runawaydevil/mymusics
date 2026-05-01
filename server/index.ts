@@ -29,8 +29,15 @@ const METADATA_TSV = process.env.METADATA_TSV
 const IA_ITEM_ID = process.env.IA_ITEM_ID?.trim() || IA_DRAGON_HOARD_ID;
 
 const distDir = path.join(__dirname, "..", "dist");
-const serveStatic =
+const distIndexPath = path.join(distDir, "index.html");
+const distExists = fs.existsSync(distIndexPath);
+
+/** Serve Vite build from dist/ when it exists (typical behind nginx). Opt out with SERVE_STATIC=false. */
+const staticDisabled =
+  process.env.SERVE_STATIC === "false" || process.env.SERVE_STATIC === "0";
+const staticExplicit =
   process.env.SERVE_STATIC === "true" || process.env.SERVE_STATIC === "1";
+const serveStatic = !staticDisabled && (staticExplicit || distExists);
 
 let pool: TrackMeta[] = [];
 
@@ -92,19 +99,33 @@ async function main() {
     });
   });
 
-  if (serveStatic && fs.existsSync(path.join(distDir, "index.html"))) {
-    await app.register(fastifyStatic, {
-      root: distDir,
-      prefix: "/",
-    });
-    app.setNotFoundHandler((request, reply) => {
-      const pathname = request.url.split("?")[0] ?? "";
-      if (pathname.startsWith("/api")) {
-        return reply.code(404).send({ error: "Not found" });
-      }
-      return reply.sendFile("index.html");
-    });
-    console.info(`MyMusics: serving static files from ${distDir}`);
+  if (serveStatic) {
+    if (distExists) {
+      await app.register(fastifyStatic, {
+        root: distDir,
+        prefix: "/",
+      });
+      app.setNotFoundHandler((request, reply) => {
+        const pathname = request.url.split("?")[0] ?? "";
+        if (pathname.startsWith("/api")) {
+          return reply.code(404).send({ error: "Not found" });
+        }
+        return reply.sendFile("index.html");
+      });
+      console.info(`MyMusics: serving SPA + /api from ${distDir}`);
+    } else {
+      console.warn(
+        "MyMusics: SERVE_STATIC requested but dist/index.html is missing — run `npm run build` on the server.",
+      );
+    }
+  } else if (distExists) {
+    console.info(
+      "MyMusics: dist/ exists but SPA is disabled (SERVE_STATIC=false); GET / returns 404, /api only.",
+    );
+  } else {
+    console.info(
+      "MyMusics: API only (no dist/). Use `npm run build` or set up Vite dev; nginx should not proxy / to this port until SPA is served.",
+    );
   }
 
   await app.listen({ port: PORT, host: "0.0.0.0" });
