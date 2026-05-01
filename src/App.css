@@ -9,6 +9,26 @@
   margin-bottom: 2rem;
 }
 
+.logo-link {
+  display: inline-block;
+}
+
+.site-nav {
+  margin-top: 1rem;
+}
+
+.nav-link {
+  font-weight: 600;
+  color: var(--sky);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--sky) 45%, transparent);
+}
+
+.nav-link:hover {
+  color: var(--yellow);
+  border-bottom-color: color-mix(in srgb, var(--yellow) 50%, transparent);
+}
+
 .logo {
   max-width: min(360px, 100%);
   height: auto;
@@ -207,4 +227,41 @@
 .footer code {
   font-size: 0.85em;
   color: var(--sky);
+}
+
+.about-main {
+  grid-column: 1 / -1;
+  max-width: 42rem;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.about-card {
+  padding: 1.5rem 1.35rem 1.75rem;
+}
+
+.about-title {
+  margin: 0 0 1.25rem;
+  font-size: 1.35rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--yellow);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+
+.about-prose p {
+  margin: 0 0 1rem;
+  font-size: 0.98rem;
+  line-height: 1.6;
+  color: color-mix(in srgb, #fff 88%, var(--muted));
+}
+
+.about-prose p:last-child {
+  margin-bottom: 0;
+}
+
+.about-signoff {
+  margin-top: 1.5rem !important;
+  font-style: italic;
+  color: var(--muted) !important;
 }
