@@ -26,6 +26,7 @@ export function SiteHeader({ nav }: { nav: NavKind }) {
           </Link>
         )}
       </nav>
+      <p className="tagline">Pull up a chair — random songs from the archive.</p>
     </header>
   );
 }

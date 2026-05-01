@@ -122,6 +122,17 @@ function randomTrack(): TrackMeta | null {
   return pool[Math.floor(Math.random() * pool.length)]!;
 }
 
+/** Prefer a track whose id differs from `excludeId` when the pool has more than one row. */
+function randomTrackExcluding(excludeId: string | undefined): TrackMeta | null {
+  if (!pool.length) return null;
+  if (!excludeId?.trim() || pool.length === 1) {
+    return randomTrack();
+  }
+  const filtered = pool.filter((t) => t.id !== excludeId);
+  if (filtered.length === 0) return randomTrack();
+  return filtered[Math.floor(Math.random() * filtered.length)]!;
+}
+
 async function main() {
   applyMetadataPathsFromEnv();
   console.info(`MyMusics: cwd=${process.cwd()}`);
@@ -178,6 +189,26 @@ async function main() {
 
   app.get("/api/track/random", async (_req, reply) => {
     const track = randomTrack();
+    if (!track) {
+      return reply.code(503).send({
+        error: "No tracks available. Check that metadata loaded correctly.",
+      });
+    }
+    return reply.send({
+      track: {
+        id: track.id,
+        title: track.title,
+        artist: track.artist,
+        fileKey: track.fileKey,
+      },
+      streamUrl: track.archiveUrl,
+    });
+  });
+
+  app.get("/api/track/up-next", async (req, reply) => {
+    const raw = (req.query as { exclude?: string }).exclude;
+    const excludeId = typeof raw === "string" ? raw.trim() : undefined;
+    const track = randomTrackExcluding(excludeId);
     if (!track) {
       return reply.code(503).send({
         error: "No tracks available. Check that metadata loaded correctly.",
