@@ -35,9 +35,7 @@ export default function App() {
     if (!a) return;
     a.src = url;
     a.load();
-    void a.play().catch(() => {
-      setStatus("Playback was blocked — click play.");
-    });
+    void a.play().catch(() => {});
   }, []);
 
   const loadNext = useCallback(async () => {
