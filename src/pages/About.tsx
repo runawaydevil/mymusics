@@ -1,3 +1,4 @@
+import { EmbedSnippet } from "../components/EmbedSnippet";
 import { SiteHeader } from "../components/SiteHeader";
 import "../App.css";
 
@@ -40,6 +41,8 @@ export default function About() {
           </article>
         </div>
       </main>
+
+      <EmbedSnippet />
 
       <footer className="footer">
         <small className="muted">Developed by Pablo Murad — 2026</small>

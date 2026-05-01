@@ -151,6 +151,18 @@ async function main() {
   const app = Fastify({ logger: true });
   await app.register(cors, { origin: true });
 
+  /** Allow embedding the SPA (e.g. /embed iframe on third-party sites). Strip anti-framing headers on HTML. */
+  app.addHook("onSend", async (_request, reply, payload) => {
+    const ct = reply.getHeader("content-type");
+    const ctStr = Array.isArray(ct) ? ct[0] : ct;
+    if (typeof ctStr === "string" && ctStr.includes("text/html")) {
+      reply.header("Content-Security-Policy", "frame-ancestors *");
+      reply.removeHeader("x-frame-options");
+      reply.removeHeader("X-Frame-Options");
+    }
+    return payload;
+  });
+
   app.get("/api/health", async () => {
     let metadataSizeBytes: number | null = null;
     try {

@@ -77,6 +77,8 @@ server {
 
 No extra `vite.config` base URL is needed when the site is served at the domain root.
 
+**Embed (`/embed`) on third-party sites:** The Node server sends `Content-Security-Policy: frame-ancestors *` on HTML responses so the player can be iframed. If the iframe still appears blank elsewhere, check that nginx (or another proxy) is **not** adding `X-Frame-Options: DENY` / `SAMEORIGIN` or a stricter `frame-ancestors` — those headers override or combine with the app’s policy.
+
 ## Troubleshooting
 
 ### HTTP 503 on `/api/track/random` (“No tracks available”)

@@ -1,16 +1,13 @@
 import { CozyAudioBar } from "../components/CozyAudioBar";
-import { EmbedSnippet } from "../components/EmbedSnippet";
-import { SiteHeader } from "../components/SiteHeader";
 import { useMyMusicsPlayback } from "../hooks/useMyMusicsPlayback";
 import "../App.css";
 
-export default function Home() {
+export default function Embed() {
   const {
     audioRef,
     track,
     upNext,
     status,
-    history,
     autoPlay,
     setAutoPlay,
     healthWarn,
@@ -23,21 +20,15 @@ export default function Home() {
   } = useMyMusicsPlayback();
 
   return (
-    <div className="page">
-      {healthWarn ? (
-        <div className="health-banner" role="alert">
-          <strong>Server metadata</strong>
-          <p>{healthWarn}</p>
-          <p className="health-banner-hint">
-            On the host, run <code>curl -sS http://127.0.0.1:38471/api/health</code> (adjust
-            port) and fix <code>METADATA_TSV</code> or remove it to use the default{" "}
-            <code>data/metadata.tsv</code>.
-          </p>
-        </div>
-      ) : null}
-      <SiteHeader nav="home" />
+    <div className="embed-page">
+      <div className="embed-shell">
+        {healthWarn ? (
+          <div className="health-banner health-banner--embed" role="alert">
+            <strong>Server metadata</strong>
+            <p>{healthWarn}</p>
+          </div>
+        ) : null}
 
-      <main className="main">
         <article className="card now-playing">
           <header className="card-head">
             <h2>Now playing</h2>
@@ -102,26 +93,7 @@ export default function Home() {
             {status && track ? <p className="hint">{status}</p> : null}
           </div>
         </article>
-
-        <aside className="card history" aria-label="Recently played">
-          <h2>History</h2>
-          <ol className="history-list">
-            {history.map((t, idx) => (
-              <li key={`${t.id}-${idx}-${t.title}`}>
-                <span className="h-artist">{t.artist}</span>
-                <span className="sep">—</span>
-                <span className="h-title">{t.title}</span>
-              </li>
-            ))}
-          </ol>
-        </aside>
-      </main>
-
-      <EmbedSnippet />
-
-      <footer className="footer">
-        <small className="muted">Developed by Pablo Murad — 2026</small>
-      </footer>
+      </div>
     </div>
   );
 }
