@@ -23,9 +23,22 @@ function resolvePath(p: string): string {
 }
 
 const PORT = resolveApiPort(process.env);
+/** Resolved path to data/metadata.tsv next to the app (independent of METADATA_TSV env). */
+const BUNDLED_METADATA_TSV = path.join(__dirname, "..", "data", "metadata.tsv");
 const METADATA_TSV = process.env.METADATA_TSV
-  ? resolvePath(process.env.METADATA_TSV)
-  : path.join(__dirname, "..", "data", "metadata.tsv");
+  ? resolvePath(process.env.METADATA_TSV.trim())
+  : BUNDLED_METADATA_TSV;
+
+function hintForMetadataNotFound(message: string): string {
+  if (!message.includes("not found")) return message;
+  if (fs.existsSync(BUNDLED_METADATA_TSV) && METADATA_TSV !== BUNDLED_METADATA_TSV) {
+    return `${message} Your METADATA_TSV points elsewhere, but the repo file exists at ${BUNDLED_METADATA_TSV}. Set METADATA_TSV to that path, or remove METADATA_TSV from .env/PM2 to use the default.`;
+  }
+  if (fs.existsSync(BUNDLED_METADATA_TSV)) {
+    return `${message} (unexpected: bundled path exists; check permissions.)`;
+  }
+  return `${message} Expected a copy at ${BUNDLED_METADATA_TSV} relative to the app install.`;
+}
 const IA_ITEM_ID = process.env.IA_ITEM_ID?.trim() || IA_DRAGON_HOARD_ID;
 
 const distDir = path.join(__dirname, "..", "dist");
@@ -84,8 +97,8 @@ async function main() {
   } catch (e) {
     console.error(e);
     pool = [];
-    metadataLoadHint =
-      e instanceof Error ? e.message : "Failed to load metadata (see server logs).";
+    const raw = e instanceof Error ? e.message : "Failed to load metadata (see server logs).";
+    metadataLoadHint = hintForMetadataNotFound(raw);
   }
 
   const app = Fastify({ logger: true });
