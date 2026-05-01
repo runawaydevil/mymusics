@@ -25,7 +25,7 @@ function resolvePath(p: string): string {
 const PORT = resolveApiPort(process.env);
 const METADATA_TSV = process.env.METADATA_TSV
   ? resolvePath(process.env.METADATA_TSV)
-  : path.join(__dirname, "..", "..", "data", "metadata.tsv");
+  : path.join(__dirname, "..", "data", "metadata.tsv");
 const IA_ITEM_ID = process.env.IA_ITEM_ID?.trim() || IA_DRAGON_HOARD_ID;
 
 const distDir = path.join(__dirname, "..", "dist");
@@ -40,10 +40,35 @@ const staticExplicit =
 const serveStatic = !staticDisabled && (staticExplicit || distExists);
 
 let pool: TrackMeta[] = [];
+let metadataLoadHint: string | null = null;
+
+function diagnoseEmptyMetadata(tsvPath: string) {
+  if (!fs.existsSync(tsvPath)) {
+    return `File does not exist. Copy metadata.tsv from the Dragon Hoard dataset and set METADATA_TSV to an absolute path (e.g. /var/www/mymusics-data/metadata.tsv).`;
+  }
+  const stat = fs.statSync(tsvPath);
+  if (stat.size === 0) return "File is empty (0 bytes).";
+  const sample = fs.readFileSync(tsvPath, "utf8").slice(0, 8192);
+  const firstLine = sample.split(/\r?\n/).find((l) => l.trim()) ?? "";
+  const cols = firstLine.split("\t").length;
+  if (cols < 4) {
+    return `First data row has ${cols} tab-separated columns (need at least 4). If you opened the TSV in Excel, it may have been saved as CSV or with semicolons — restore tab-separated format. Preview: ${firstLine.slice(0, 120)}`;
+  }
+  const lastCol = firstLine.split("\t").pop() ?? "";
+  if (!lastCol.includes("myspacecdn") || !lastCol.toLowerCase().includes(".mp3")) {
+    return `Last column should be a MySpace CDN URL ending in .mp3. Preview of last column: ${lastCol.slice(0, 80)}`;
+  }
+  return "Rows parsed but no valid Archive URLs (unexpected — check IA_ITEM_ID and CDN URL shape).";
+}
 
 function rebuildPool() {
+  metadataLoadHint = null;
   pool = loadTracksFromTsv(METADATA_TSV, IA_ITEM_ID);
   console.info(`MyMusics: loaded ${pool.length} tracks from metadata (Internet Archive)`);
+  if (pool.length === 0) {
+    metadataLoadHint = diagnoseEmptyMetadata(METADATA_TSV);
+    console.warn(`MyMusics: 0 tracks — ${metadataLoadHint}`);
+  }
 }
 
 function randomTrack(): TrackMeta | null {
@@ -52,22 +77,39 @@ function randomTrack(): TrackMeta | null {
 }
 
 async function main() {
+  console.info(`MyMusics: cwd=${process.cwd()}`);
+  console.info(`MyMusics: METADATA_TSV resolved to ${METADATA_TSV}`);
   try {
     rebuildPool();
   } catch (e) {
     console.error(e);
     pool = [];
+    metadataLoadHint =
+      e instanceof Error ? e.message : "Failed to load metadata (see server logs).";
   }
 
   const app = Fastify({ logger: true });
   await app.register(cors, { origin: true });
 
-  app.get("/api/health", async () => ({
-    ok: true,
-    trackCount: pool.length,
-    metadataTsv: METADATA_TSV,
-    iaItemId: IA_ITEM_ID,
-  }));
+  app.get("/api/health", async () => {
+    let metadataSizeBytes: number | null = null;
+    try {
+      if (fs.existsSync(METADATA_TSV)) metadataSizeBytes = fs.statSync(METADATA_TSV).size;
+    } catch {
+      metadataSizeBytes = null;
+    }
+    return {
+      ok: true,
+      trackCount: pool.length,
+      tracksReady: pool.length > 0,
+      metadataTsv: METADATA_TSV,
+      metadataExists: fs.existsSync(METADATA_TSV),
+      metadataSizeBytes,
+      cwd: process.cwd(),
+      iaItemId: IA_ITEM_ID,
+      ...(metadataLoadHint ? { hint: metadataLoadHint } : {}),
+    };
+  });
 
   app.post("/api/reload", async (_req, reply) => {
     try {

@@ -1,17 +1,17 @@
 # MyMusics
 
-Retro-styled web player that picks random tracks from [`metadata.tsv`](../data/metadata.tsv) and streams MP3s from the Internet Archive item [**The Myspace Dragon Hoard (2008–2010)**](https://archive.org/details/myspace_dragon_hoard_2010). URLs follow the same pattern as the official IA “Hobbit” player (ZIP member paths).
+Retro-styled web player that picks random tracks from [`data/metadata.tsv`](data/metadata.tsv) and streams MP3s from the Internet Archive item [**The Myspace Dragon Hoard (2008–2010)**](https://archive.org/details/myspace_dragon_hoard_2010). URLs follow the same pattern as the official IA “Hobbit” player (ZIP member paths).
 
 ## Requirements
 
 - Node.js 20+
-- A local copy of `metadata.tsv` (from the Dragon Hoard collection). No local MP3 mirror is required.
+- `data/metadata.tsv` in this repo (Dragon Hoard export). No local MP3 mirror is required.
 
 ## Configuration
 
 1. Copy `.env.example` to `.env` and adjust:
 
-   - `METADATA_TSV` — path to `metadata.tsv` (default: `../data/metadata.tsv` relative to this folder).
+   - `METADATA_TSV` — path to `metadata.tsv` (default: `data/metadata.tsv` inside this project).
    - **Ports** — defined in [`config/ports.ts`](config/ports.ts) as paired pools. Use `PORT_INDEX` (0–3) to pick a pair, or set `PORT` / `VITE_DEV_PORT` explicitly. Defaults: API `38471`, Vite dev `38472` (index 0).
    - `IA_ITEM_ID` (optional) — Internet Archive item id (default `myspace_dragon_hoard_2010`).
    - `SERVE_STATIC` — if `dist/index.html` exists after `npm run build`, the app serves the SPA + `/api` automatically. Set `SERVE_STATIC=false` for API-only. Explicit `true`/`1` is optional; use it when you want a clear flag in PM2/systemd.
@@ -51,6 +51,11 @@ pm2 startup
 ```
 
 Set `METADATA_TSV` to an **absolute path** on the server inside `ecosystem.config.cjs` → `env_production`, or use a `.env` next to the app.
+
+### VPS: “No tracks available” / `trackCount: 0`
+
+1. Ensure **`data/metadata.tsv`** is present after `git clone` / deploy (large file; clone may take a while). If you omitted it, copy `metadata.tsv` next to the app and set **`METADATA_TSV`** to an **absolute path**. Relative paths resolve from **`process.cwd()`** (the app root).
+2. Restart the process and check **`GET /api/health`**: you should see `tracksReady: true`, `trackCount` > 0, `metadataExists: true`, and a `hint` if something is still wrong.
 
 ### Reverse proxy (e.g. `mymusics.murad.gg`)
 

@@ -134,7 +134,7 @@ export default function App() {
       </main>
 
       <footer className="footer">
-        <small className="muted">Desenvolvido por Pablo Murad — 2026</small>
+        <small className="muted">Developed by Pablo Murad — 2026</small>
       </footer>
     </div>
   );

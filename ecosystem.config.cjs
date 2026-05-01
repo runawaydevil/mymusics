@@ -18,8 +18,8 @@ module.exports = {
         // Uses predefined pool in config/ports.ts — set PORT_INDEX 0..3 or explicit PORT
         PORT_INDEX: "0",
         SERVE_STATIC: "true",
-        // Set absolute path on the server, e.g.:
-        // METADATA_TSV: "/var/www/mymusics/data/metadata.tsv",
+        // Required on VPS: repo has no metadata.tsv — upload the TSV and set absolute path:
+        // METADATA_TSV: "/var/www/mymusics-data/metadata.tsv",
       },
     },
   ],
