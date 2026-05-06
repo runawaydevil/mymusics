@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import cors from "@fastify/cors";
 import fastifyStatic from "@fastify/static";
@@ -14,9 +13,10 @@ import {
 } from "./metadata.js";
 import { resolveApiPort } from "../config/ports.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+/** App root — same as PM2 `cwd` / where you run `npm start` (not the compiled file path). */
+const PROJECT_ROOT = process.cwd();
 
-dotenv.config({ path: path.join(__dirname, "..", ".env") });
+dotenv.config({ path: path.join(PROJECT_ROOT, ".env") });
 
 function resolvePath(p: string): string {
   return path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
@@ -24,7 +24,7 @@ function resolvePath(p: string): string {
 
 const PORT = resolveApiPort(process.env);
 /** Resolved path to data/metadata.tsv next to the app (independent of METADATA_TSV env). */
-const BUNDLED_METADATA_TSV = path.join(__dirname, "..", "data", "metadata.tsv");
+const BUNDLED_METADATA_TSV = path.join(PROJECT_ROOT, "data", "metadata.tsv");
 
 /** If METADATA_TSV points to a missing file but the bundled copy exists, use bundled (VPS typo self-heal). */
 function resolveEffectiveMetadataTsv(): {
@@ -55,7 +55,7 @@ let METADATA_ENV_REQUESTED: string | null = null;
 let METADATA_USED_FALLBACK = false;
 
 function applyMetadataPathsFromEnv() {
-  dotenv.config({ path: path.join(__dirname, "..", ".env") });
+  dotenv.config({ path: path.join(PROJECT_ROOT, ".env") });
   const m = resolveEffectiveMetadataTsv();
   METADATA_TSV = m.path;
   METADATA_ENV_REQUESTED = m.envRequested;
@@ -74,7 +74,7 @@ function hintForMetadataNotFound(message: string): string {
 }
 const IA_ITEM_ID = process.env.IA_ITEM_ID?.trim() || IA_DRAGON_HOARD_ID;
 
-const distDir = path.join(__dirname, "..", "dist");
+const distDir = path.join(PROJECT_ROOT, "dist");
 const distIndexPath = path.join(distDir, "index.html");
 const distExists = fs.existsSync(distIndexPath);
 

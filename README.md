@@ -41,6 +41,8 @@ npm run build
 SERVE_STATIC=true npm run start
 ```
 
+Production runs **compiled JavaScript** (`node dist-server/server/index.js`), not `tsx`. Dev still uses `tsx watch server/index.ts` for the API hot reload.
+
 Or use **PM2** (from this folder, after `npm run build`):
 
 ```bash
@@ -121,7 +123,8 @@ Messages such as **“The kernel '…' for backend 'cpu' / 'webgl' is already re
 |-------------------|--------------------------------------------------|
 | `npm run dev`     | Vite + API with hot reload                       |
 | `npm run build`   | Production frontend build                        |
-| `npm run start`   | API (`tsx server/index.ts`); use `SERVE_STATIC=true` to also serve `dist/` |
+| `npm run start`   | API (`node dist-server/server/index.js` — run `npm run build` first); `SERVE_STATIC=true` also serves `dist/` |
+| `npm run build:server` | Compile API + `config/ports` to `dist-server/` (included in `npm run build`) |
 | `npm run pm2:prod`| `npm run build` then PM2 with `ecosystem.config.cjs` |
 
 ## Logo
