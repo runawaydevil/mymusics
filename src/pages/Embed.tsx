@@ -1,12 +1,21 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
+import { useLocation } from "react-router-dom";
+
 import { CozyAudioBar } from "../components/CozyAudioBar";
+import { PlayerAttribution } from "../components/PlayerAttribution";
+import { PlayerStatus } from "../components/PlayerStatus";
 import { PUBLIC_SITE_URL } from "../config/siteUrl";
+import { parseEmbedParams } from "../lib/embedParams";
+import { useEmbedMessaging } from "../hooks/useEmbedMessaging";
 import { useMyMusicsPlayback } from "../hooks/useMyMusicsPlayback";
 import "../App.css";
 
 const EMBED_ROOT_CLASS = "embed-active";
 
 export default function Embed() {
+  const location = useLocation();
+  const params = useMemo(() => parseEmbedParams(location.search), [location.search]);
+
   useEffect(() => {
     document.documentElement.classList.add(EMBED_ROOT_CLASS);
     return () => {
@@ -16,28 +25,55 @@ export default function Embed() {
 
   const {
     audioRef,
+    preloadAudioRef,
     track,
+    streamUrl,
     upNext,
     status,
+    playbackPhase,
+    embedPlaybackState,
     autoPlay,
     setAutoPlay,
     healthWarn,
+    poolTrackCount,
     queueBusy,
     requestNextTrack,
     handleAudioPlaying,
     handleAudioError,
+    handleAudioPause,
+    handlePlay,
+    handlePause,
     onEnded,
     showUpNextHint,
-  } = useMyMusicsPlayback();
+  } = useMyMusicsPlayback({
+    startTrackId: params.startId,
+    autoplayOnMount: params.autoplay,
+    autoAdvance: params.autoplay,
+    startMuted: params.startMuted,
+  });
+
+  useEmbedMessaging({
+    enabled: true,
+    trackCount: poolTrackCount,
+    track,
+    streamUrl,
+    playbackState: embedPlaybackState,
+    onNext: requestNextTrack,
+    onPlay: handlePlay,
+    onPause: handlePause,
+  });
+
+  const shellClass =
+    params.theme === "compact" ? "embed-shell embed-shell--compact" : "embed-shell";
 
   return (
     <div className="embed-page">
-      <div className="embed-shell">
+      <div className={shellClass}>
         {healthWarn ? (
-          <div className="health-banner health-banner--embed" role="alert">
-            <strong>Server metadata</strong>
+          <details className="health-banner health-banner--embed">
+            <summary>Server metadata</summary>
             <p>{healthWarn}</p>
-          </div>
+          </details>
         ) : null}
 
         <article className="card now-playing">
@@ -63,7 +99,7 @@ export default function Embed() {
                   <span className="up-next-title">{upNext.title}</span>
                 </p>
                 {showUpNextHint ? (
-                  <p className="up-next-note muted">Only one track in the pool — it will repeat.</p>
+                  <p className="up-next-note muted">Only one track — repeats.</p>
                 ) : null}
               </>
             ) : queueBusy ? (
@@ -84,45 +120,52 @@ export default function Embed() {
               aria-hidden="true"
               onEnded={onEnded}
               onPlaying={handleAudioPlaying}
+              onPause={handleAudioPause}
               onError={handleAudioError}
             />
+            <audio ref={preloadAudioRef} className="audio-hidden" preload="auto" aria-hidden="true" />
             <CozyAudioBar audioRef={audioRef} disabled={!track} />
+            <PlayerStatus phase={playbackPhase} status={status} hasTrack={!!track} compact />
 
             <div className="actions">
               <button type="button" className="btn primary" onClick={() => void requestNextTrack()}>
                 Next
               </button>
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={autoPlay}
-                  onChange={(e) => setAutoPlay(e.target.checked)}
-                />
-                Auto-advance when track ends
-              </label>
+              {params.autoplay ? (
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={autoPlay}
+                    onChange={(e) => setAutoPlay(e.target.checked)}
+                  />
+                  Auto-advance
+                </label>
+              ) : null}
             </div>
-            {status && track ? <p className="hint">{status}</p> : null}
           </div>
+          <PlayerAttribution compact />
         </article>
 
-        <div className="embed-brand">
-          <a
-            className="embed-brand-link"
-            href={PUBLIC_SITE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="MyMusics"
-          >
-            <img
-              className="embed-brand-logo"
-              src="/mymusics.png"
-              alt="MyMusics"
-              width={200}
-              height={80}
-              decoding="async"
-            />
-          </a>
-        </div>
+        {params.showBrand ? (
+          <div className="embed-brand">
+            <a
+              className="embed-brand-link"
+              href={PUBLIC_SITE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="MyMusics"
+            >
+              <img
+                className="embed-brand-logo"
+                src="/mymusics.png"
+                alt="MyMusics"
+                width={200}
+                height={80}
+                decoding="async"
+              />
+            </a>
+          </div>
+        ) : null}
       </div>
     </div>
   );

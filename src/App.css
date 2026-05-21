@@ -65,6 +65,11 @@
 }
 
 .card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   margin-bottom: 1rem;
 }
 
@@ -674,4 +679,133 @@
 
 .embed-snippet-copy {
   margin-top: 0;
+}
+
+.btn-share {
+  font-size: 0.85rem;
+  padding: 0.35rem 0.75rem;
+}
+
+.player-attribution {
+  margin: 0.75rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted, #888);
+}
+
+.player-attribution--compact {
+  margin-top: 0.5rem;
+  font-size: 0.72rem;
+}
+
+.player-attribution a {
+  color: inherit;
+}
+
+.player-phase {
+  font-size: 0.9rem;
+  color: var(--accent, #c9a227);
+  margin: 0.5rem 0 0;
+}
+
+.player-phase--compact,
+.hint--compact {
+  font-size: 0.8rem;
+}
+
+.player-keys-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+}
+
+.track-search {
+  margin-bottom: 1rem;
+}
+
+.track-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+}
+
+.track-search-results {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.track-search-hit,
+.history-hit {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0.35rem 0;
+  font: inherit;
+}
+
+.track-search-hit:hover,
+.history-hit:hover {
+  text-decoration: underline;
+}
+
+.track-search-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+}
+
+.embed-snippet-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.embed-snippet-start {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.embed-snippet-start input {
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+}
+
+.embed-shell--compact .card {
+  padding: 0.65rem 0.85rem;
+}
+
+.embed-shell--compact .track-block .title {
+  font-size: 1rem;
+}
+
+.embed-shell--compact .track-block .artist {
+  font-size: 0.85rem;
+}
+
+.embed-shell--compact .up-next {
+  margin-top: 0.35rem;
+}
+
+.embed-shell--compact .embed-brand-logo {
+  max-height: 48px;
+  width: auto;
+}
+
+.health-banner--embed summary {
+  cursor: pointer;
+  font-weight: 600;
 }

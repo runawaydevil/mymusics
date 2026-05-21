@@ -2,6 +2,7 @@ import { Route, Routes } from "react-router-dom";
 import About from "./pages/About";
 import Embed from "./pages/Embed";
 import Home from "./pages/Home";
+import TrackRedirect from "./pages/TrackRedirect";
 
 export default function App() {
   return (
@@ -9,6 +10,7 @@ export default function App() {
       <Route path="/" element={<Home />} />
       <Route path="/about" element={<About />} />
       <Route path="/embed" element={<Embed />} />
+      <Route path="/t/:id" element={<TrackRedirect />} />
     </Routes>
   );
 }

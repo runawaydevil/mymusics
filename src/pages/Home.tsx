@@ -1,26 +1,59 @@
+import { useCallback, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+
 import { CozyAudioBar } from "../components/CozyAudioBar";
 import { EmbedSnippet } from "../components/EmbedSnippet";
+import { PlayerAttribution } from "../components/PlayerAttribution";
+import { PlayerStatus } from "../components/PlayerStatus";
 import { SiteHeader } from "../components/SiteHeader";
+import { TrackSearch } from "../components/TrackSearch";
+import { PUBLIC_SITE_URL } from "../config/siteUrl";
 import { useMyMusicsPlayback } from "../hooks/useMyMusicsPlayback";
+import { usePlayerKeyboard } from "../hooks/usePlayerKeyboard";
 import "../App.css";
 
 export default function Home() {
+  const [searchParams] = useSearchParams();
+  const startTrackId = searchParams.get("track")?.trim() || null;
+  const [linkCopied, setLinkCopied] = useState(false);
+
   const {
     audioRef,
+    preloadAudioRef,
     track,
-    upNext,
     status,
+    playbackPhase,
+    upNext,
     history,
     autoPlay,
     setAutoPlay,
     healthWarn,
     queueBusy,
     requestNextTrack,
+    loadTrackById,
     handleAudioPlaying,
     handleAudioError,
+    handleAudioPause,
     onEnded,
     showUpNextHint,
-  } = useMyMusicsPlayback();
+  } = useMyMusicsPlayback({
+    startTrackId,
+    autoplayOnMount: true,
+  });
+
+  usePlayerKeyboard({ audioRef, enabled: true, onNext: requestNextTrack });
+
+  const copyShareLink = useCallback(async () => {
+    if (!track) return;
+    const url = `${PUBLIC_SITE_URL}/?track=${encodeURIComponent(track.id)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(true);
+      window.setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      setLinkCopied(false);
+    }
+  }, [track]);
 
   return (
     <div className="page">
@@ -30,17 +63,23 @@ export default function Home() {
           <p>{healthWarn}</p>
           <p className="health-banner-hint">
             On the host, run <code>curl -sS http://127.0.0.1:38471/api/health</code> (adjust
-            port) and fix <code>METADATA_TSV</code> or remove it to use the default{" "}
-            <code>data/metadata.tsv</code>.
+            port) and fix <code>METADATA_TSV</code> or run <code>npm run index-metadata</code>.
           </p>
         </div>
       ) : null}
       <SiteHeader nav="home" />
 
       <main className="main">
+        <TrackSearch onSelect={(id) => void loadTrackById(id)} disabled={!!healthWarn} />
+
         <article className="card now-playing">
           <header className="card-head">
             <h2>Now playing</h2>
+            {track ? (
+              <button type="button" className="btn btn-share" onClick={() => void copyShareLink()}>
+                {linkCopied ? "Link copied!" : "Copy link"}
+              </button>
+            ) : null}
           </header>
           {track ? (
             <div className="track-block">
@@ -82,9 +121,12 @@ export default function Home() {
               aria-hidden="true"
               onEnded={onEnded}
               onPlaying={handleAudioPlaying}
+              onPause={handleAudioPause}
               onError={handleAudioError}
             />
+            <audio ref={preloadAudioRef} className="audio-hidden" preload="auto" aria-hidden="true" />
             <CozyAudioBar audioRef={audioRef} disabled={!track} />
+            <PlayerStatus phase={playbackPhase} status={status} hasTrack={!!track} />
 
             <div className="actions">
               <button type="button" className="btn primary" onClick={() => void requestNextTrack()}>
@@ -99,8 +141,11 @@ export default function Home() {
                 Auto-advance when track ends
               </label>
             </div>
-            {status && track ? <p className="hint">{status}</p> : null}
+            <p className="player-keys-hint muted">
+              Shortcuts: Space play/pause, N next, M mute
+            </p>
           </div>
+          <PlayerAttribution />
         </article>
 
         <aside className="card history" aria-label="Recently played">
@@ -108,9 +153,15 @@ export default function Home() {
           <ol className="history-list">
             {history.map((t, idx) => (
               <li key={`${t.id}-${idx}-${t.title}`}>
-                <span className="h-artist">{t.artist}</span>
-                <span className="sep">—</span>
-                <span className="h-title">{t.title}</span>
+                <button
+                  type="button"
+                  className="history-hit"
+                  onClick={() => void loadTrackById(t.id)}
+                >
+                  <span className="h-artist">{t.artist}</span>
+                  <span className="sep">—</span>
+                  <span className="h-title">{t.title}</span>
+                </button>
               </li>
             ))}
           </ol>

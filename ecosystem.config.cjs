@@ -17,7 +17,9 @@ module.exports = {
         // Uses predefined pool in config/ports.ts — set PORT_INDEX 0..3 or explicit PORT
         PORT_INDEX: "0",
         SERVE_STATIC: "true",
-        // Required on VPS: repo has no metadata.tsv — upload the TSV and set absolute path:
+        TRACKS_DB: "data/tracks.db",
+        // After deploy: npm run index-metadata (or index-metadata --if-stale) when metadata.tsv changes
+        // Required on VPS if metadata is outside the repo:
         // METADATA_TSV: "/var/www/mymusics-data/metadata.tsv",
       },
     },

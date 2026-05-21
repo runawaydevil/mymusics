@@ -6,152 +6,190 @@ import fastifyStatic from "@fastify/static";
 import dotenv from "dotenv";
 import Fastify from "fastify";
 
+import { buildOEmbedResponse } from "./oembed.js";
 import {
   IA_DRAGON_HOARD_ID,
   loadTracksFromTsv,
   type TrackMeta,
 } from "./metadata.js";
+import {
+  bundledMetadataTsv,
+  getProjectRoot,
+  resolveEffectiveMetadataTsv,
+  resolveTracksDb,
+} from "./paths.js";
+import { rateLimit } from "./rateLimit.js";
+import { TrackStore } from "./trackStore.js";
 import { resolveApiPort } from "../config/ports.js";
 
-/** App root — same as PM2 `cwd` / where you run `npm start` (not the compiled file path). */
-const PROJECT_ROOT = process.cwd();
+const PROJECT_ROOT = getProjectRoot();
 
 dotenv.config({ path: path.join(PROJECT_ROOT, ".env") });
 
-function resolvePath(p: string): string {
-  return path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
-}
-
 const PORT = resolveApiPort(process.env);
-/** Resolved path to data/metadata.tsv next to the app (independent of METADATA_TSV env). */
-const BUNDLED_METADATA_TSV = path.join(PROJECT_ROOT, "data", "metadata.tsv");
+const IA_ITEM_ID = process.env.IA_ITEM_ID?.trim() || IA_DRAGON_HOARD_ID;
+const PUBLIC_SITE_URL =
+  process.env.PUBLIC_SITE_URL?.trim() || "https://mymusics.murad.gg";
 
-/** If METADATA_TSV points to a missing file but the bundled copy exists, use bundled (VPS typo self-heal). */
-function resolveEffectiveMetadataTsv(): {
-  path: string;
-  envRequested: string | null;
-  usedFallback: boolean;
-} {
-  const raw = process.env.METADATA_TSV?.trim();
-  if (!raw) {
-    return { path: BUNDLED_METADATA_TSV, envRequested: null, usedFallback: false };
-  }
-  const resolved = resolvePath(raw);
-  if (fs.existsSync(resolved)) {
-    return { path: resolved, envRequested: resolved, usedFallback: false };
-  }
-  if (fs.existsSync(BUNDLED_METADATA_TSV)) {
-    console.warn(
-      `MyMusics: METADATA_TSV not found at ${resolved}; using bundled ${BUNDLED_METADATA_TSV}`,
-    );
-    return { path: BUNDLED_METADATA_TSV, envRequested: resolved, usedFallback: true };
-  }
-  return { path: resolved, envRequested: resolved, usedFallback: false };
-}
-
-/** Set at runtime in `main()` (and on `/api/reload`) so env matches PM2/dotenv; avoids load-time races. */
 let METADATA_TSV = "";
 let METADATA_ENV_REQUESTED: string | null = null;
 let METADATA_USED_FALLBACK = false;
+let TRACKS_DB_PATH = "";
 
-function applyMetadataPathsFromEnv() {
+let store: TrackStore | null = null;
+let tsvFallbackPool: TrackMeta[] = [];
+let useTsvFallback = false;
+let metadataLoadHint: string | null = null;
+
+function applyPathsFromEnv() {
   dotenv.config({ path: path.join(PROJECT_ROOT, ".env") });
-  const m = resolveEffectiveMetadataTsv();
+  const m = resolveEffectiveMetadataTsv(process.env, PROJECT_ROOT);
   METADATA_TSV = m.path;
   METADATA_ENV_REQUESTED = m.envRequested;
   METADATA_USED_FALLBACK = m.usedFallback;
+  TRACKS_DB_PATH = resolveTracksDb(process.env, PROJECT_ROOT);
 }
 
 function hintForMetadataNotFound(message: string): string {
   if (!message.includes("not found")) return message;
-  if (fs.existsSync(BUNDLED_METADATA_TSV) && METADATA_TSV !== BUNDLED_METADATA_TSV) {
-    return `${message} Your METADATA_TSV points elsewhere, but the repo file exists at ${BUNDLED_METADATA_TSV}. Set METADATA_TSV to that path, or remove METADATA_TSV from .env/PM2 to use the default.`;
+  const bundled = bundledMetadataTsv(PROJECT_ROOT);
+  if (fs.existsSync(bundled) && METADATA_TSV !== bundled) {
+    return `${message} Your METADATA_TSV points elsewhere, but the repo file exists at ${bundled}. Set METADATA_TSV to that path, or remove METADATA_TSV from .env/PM2 to use the default.`;
   }
-  if (fs.existsSync(BUNDLED_METADATA_TSV)) {
-    return `${message} (unexpected: bundled path exists; check permissions.)`;
-  }
-  return `${message} Expected a copy at ${BUNDLED_METADATA_TSV} relative to the app install.`;
+  return `${message} Run npm run index-metadata after placing metadata.tsv.`;
 }
-const IA_ITEM_ID = process.env.IA_ITEM_ID?.trim() || IA_DRAGON_HOARD_ID;
+
+function diagnoseEmptyMetadata(tsvPath: string) {
+  if (!fs.existsSync(tsvPath)) {
+    return `File does not exist. Copy metadata.tsv from the Dragon Hoard dataset and run npm run index-metadata.`;
+  }
+  const stat = fs.statSync(tsvPath);
+  if (stat.size === 0) return "File is empty (0 bytes).";
+  return "Rows parsed but no valid tracks in database. Run npm run index-metadata.";
+}
+
+function trackCount(): number {
+  if (store && !useTsvFallback) return store.count();
+  return tsvFallbackPool.length;
+}
+
+function pickRandom(excludeId?: string): TrackMeta | null {
+  if (store && !useTsvFallback) return store.random(excludeId);
+  if (!tsvFallbackPool.length) return null;
+  const ex = excludeId?.trim();
+  if (ex && tsvFallbackPool.length > 1) {
+    const filtered = tsvFallbackPool.filter((t) => t.id !== ex);
+    if (filtered.length > 0) {
+      return filtered[Math.floor(Math.random() * filtered.length)]!;
+    }
+  }
+  return tsvFallbackPool[Math.floor(Math.random() * tsvFallbackPool.length)]!;
+}
+
+function getById(id: string): TrackMeta | null {
+  if (store && !useTsvFallback) return store.getById(id);
+  return tsvFallbackPool.find((t) => t.id === id.trim()) ?? null;
+}
+
+function searchTracks(q: string, limit: number) {
+  if (store && !useTsvFallback) return store.search(q, limit);
+  const trimmed = q.trim().toLowerCase();
+  if (trimmed.length < 2) return [];
+  return tsvFallbackPool
+    .filter(
+      (t) =>
+        t.title.toLowerCase().includes(trimmed) ||
+        t.artist.toLowerCase().includes(trimmed),
+    )
+    .slice(0, limit)
+    .map((t) => ({ id: t.id, title: t.title, artist: t.artist }));
+}
+
+function toTrackPayload(track: TrackMeta) {
+  return {
+    track: {
+      id: track.id,
+      title: track.title,
+      artist: track.artist,
+      fileKey: track.fileKey,
+    },
+    streamUrl: track.archiveUrl,
+  };
+}
+
+function rebuildStore() {
+  metadataLoadHint = null;
+  applyPathsFromEnv();
+
+  if (fs.existsSync(TRACKS_DB_PATH)) {
+    store?.close();
+    store = new TrackStore(TRACKS_DB_PATH);
+    store.open();
+    useTsvFallback = false;
+    const count = store.count();
+    console.info(`MyMusics: ${count} tracks from SQLite ${TRACKS_DB_PATH}`);
+    if (count === 0) {
+      metadataLoadHint = diagnoseEmptyMetadata(METADATA_TSV);
+      console.warn(`MyMusics: 0 tracks — ${metadataLoadHint}`);
+    }
+    return;
+  }
+
+  console.warn(
+    `MyMusics: ${TRACKS_DB_PATH} missing — falling back to TSV (slow). Run: npm run index-metadata`,
+  );
+  store?.close();
+  store = null;
+  useTsvFallback = true;
+  tsvFallbackPool = loadTracksFromTsv(METADATA_TSV, IA_ITEM_ID);
+  console.info(`MyMusics: loaded ${tsvFallbackPool.length} tracks from TSV fallback`);
+  if (tsvFallbackPool.length === 0) {
+    metadataLoadHint = diagnoseEmptyMetadata(METADATA_TSV);
+  }
+}
+
+function resolveCorsOrigin(): boolean | string | RegExp | (string | RegExp)[] {
+  const raw = process.env.CORS_ORIGINS?.trim();
+  if (!raw) {
+    if (process.env.NODE_ENV === "production") {
+      return [PUBLIC_SITE_URL, "https://mymusics.murad.gg"];
+    }
+    return true;
+  }
+  if (raw === "*") return true;
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+}
 
 const distDir = path.join(PROJECT_ROOT, "dist");
 const distIndexPath = path.join(distDir, "index.html");
 const distExists = fs.existsSync(distIndexPath);
 
-/** Serve Vite build from dist/ when it exists (typical behind nginx). Opt out with SERVE_STATIC=false. */
 const staticDisabled =
   process.env.SERVE_STATIC === "false" || process.env.SERVE_STATIC === "0";
 const staticExplicit =
   process.env.SERVE_STATIC === "true" || process.env.SERVE_STATIC === "1";
 const serveStatic = !staticDisabled && (staticExplicit || distExists);
 
-let pool: TrackMeta[] = [];
-let metadataLoadHint: string | null = null;
-
-function diagnoseEmptyMetadata(tsvPath: string) {
-  if (!fs.existsSync(tsvPath)) {
-    return `File does not exist. Copy metadata.tsv from the Dragon Hoard dataset and set METADATA_TSV to an absolute path (e.g. /var/www/mymusics-data/metadata.tsv).`;
-  }
-  const stat = fs.statSync(tsvPath);
-  if (stat.size === 0) return "File is empty (0 bytes).";
-  const sample = fs.readFileSync(tsvPath, "utf8").slice(0, 8192);
-  const firstLine = sample.split(/\r?\n/).find((l) => l.trim()) ?? "";
-  const cols = firstLine.split("\t").length;
-  if (cols < 4) {
-    return `First data row has ${cols} tab-separated columns (need at least 4). If you opened the TSV in Excel, it may have been saved as CSV or with semicolons — restore tab-separated format. Preview: ${firstLine.slice(0, 120)}`;
-  }
-  const lastCol = firstLine.split("\t").pop() ?? "";
-  if (!lastCol.includes("myspacecdn") || !lastCol.toLowerCase().includes(".mp3")) {
-    return `Last column should be a MySpace CDN URL ending in .mp3. Preview of last column: ${lastCol.slice(0, 80)}`;
-  }
-  return "Rows parsed but no valid Archive URLs (unexpected — check IA_ITEM_ID and CDN URL shape).";
-}
-
-function rebuildPool() {
-  metadataLoadHint = null;
-  pool = loadTracksFromTsv(METADATA_TSV, IA_ITEM_ID);
-  console.info(`MyMusics: loaded ${pool.length} tracks from metadata (Internet Archive)`);
-  if (pool.length === 0) {
-    metadataLoadHint = diagnoseEmptyMetadata(METADATA_TSV);
-    console.warn(`MyMusics: 0 tracks — ${metadataLoadHint}`);
-  }
-}
-
-function randomTrack(): TrackMeta | null {
-  if (!pool.length) return null;
-  return pool[Math.floor(Math.random() * pool.length)]!;
-}
-
-/** Prefer a track whose id differs from `excludeId` when the pool has more than one row. */
-function randomTrackExcluding(excludeId: string | undefined): TrackMeta | null {
-  if (!pool.length) return null;
-  if (!excludeId?.trim() || pool.length === 1) {
-    return randomTrack();
-  }
-  const filtered = pool.filter((t) => t.id !== excludeId);
-  if (filtered.length === 0) return randomTrack();
-  return filtered[Math.floor(Math.random() * filtered.length)]!;
-}
-
 async function main() {
-  applyMetadataPathsFromEnv();
+  applyPathsFromEnv();
   console.info(`MyMusics: cwd=${process.cwd()}`);
-  console.info(
-    `MyMusics: metadata file ${METADATA_TSV}${METADATA_USED_FALLBACK ? ` (fallback; env had ${METADATA_ENV_REQUESTED})` : ""}`,
-  );
+  console.info(`MyMusics: metadata ${METADATA_TSV}`);
+  console.info(`MyMusics: tracks db ${TRACKS_DB_PATH}`);
+
   try {
-    rebuildPool();
+    rebuildStore();
   } catch (e) {
     console.error(e);
-    pool = [];
-    const raw = e instanceof Error ? e.message : "Failed to load metadata (see server logs).";
+    store = null;
+    useTsvFallback = true;
+    tsvFallbackPool = [];
+    const raw = e instanceof Error ? e.message : "Failed to load tracks.";
     metadataLoadHint = hintForMetadataNotFound(raw);
   }
 
   const app = Fastify({ logger: true });
-  await app.register(cors, { origin: true });
+  await app.register(cors, { origin: resolveCorsOrigin() });
 
-  /** Allow embedding the SPA (e.g. /embed iframe on third-party sites). Strip anti-framing headers on HTML. */
   app.addHook("onSend", async (_request, reply, payload) => {
     const ct = reply.getHeader("content-type");
     const ctStr = Array.isArray(ct) ? ct[0] : ct;
@@ -170,10 +208,16 @@ async function main() {
     } catch {
       metadataSizeBytes = null;
     }
+    const count = trackCount();
     return {
       ok: true,
-      trackCount: pool.length,
-      tracksReady: pool.length > 0,
+      trackCount: count,
+      tracksReady: count > 0,
+      tracksDb: TRACKS_DB_PATH,
+      tracksDbExists: fs.existsSync(TRACKS_DB_PATH),
+      useTsvFallback,
+      ftsReady: store ? store.ftsReady() : false,
+      blockedCount: store && !useTsvFallback ? store.blockedCount() : 0,
       metadataTsv: METADATA_TSV,
       ...(METADATA_ENV_REQUESTED && METADATA_ENV_REQUESTED !== METADATA_TSV
         ? { metadataEnvRequested: METADATA_ENV_REQUESTED, metadataUsedFallback: METADATA_USED_FALLBACK }
@@ -182,59 +226,93 @@ async function main() {
       metadataSizeBytes,
       cwd: process.cwd(),
       iaItemId: IA_ITEM_ID,
-      ...(metadataLoadHint ? { hint: metadataLoadHint } : {}),
+      hint:
+        metadataLoadHint ??
+        (!fs.existsSync(TRACKS_DB_PATH) && !useTsvFallback
+          ? "Run npm run index-metadata to build data/tracks.db"
+          : undefined),
     };
   });
 
   app.post("/api/reload", async (_req, reply) => {
     try {
-      applyMetadataPathsFromEnv();
-      const next = loadTracksFromTsv(METADATA_TSV, IA_ITEM_ID);
-      pool = next;
-      console.info(`MyMusics: reloaded ${pool.length} tracks from metadata`);
-      return reply.send({ ok: true, trackCount: pool.length });
+      rebuildStore();
+      return reply.send({ ok: true, trackCount: trackCount() });
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Failed to reload metadata";
+      const message = e instanceof Error ? e.message : "Failed to reload";
       return reply.code(500).send({ ok: false, error: message });
     }
   });
 
+  app.get("/api/track/search", async (req, reply) => {
+    const q = (req.query as { q?: string }).q ?? "";
+    const limitRaw = (req.query as { limit?: string }).limit;
+    const limit = limitRaw ? Math.min(50, Math.max(1, Number(limitRaw) || 20)) : 20;
+    return reply.send({ tracks: searchTracks(q, limit) });
+  });
+
   app.get("/api/track/random", async (_req, reply) => {
-    const track = randomTrack();
+    const track = pickRandom();
     if (!track) {
       return reply.code(503).send({
         error: "No tracks available. Check that metadata loaded correctly.",
       });
     }
-    return reply.send({
-      track: {
-        id: track.id,
-        title: track.title,
-        artist: track.artist,
-        fileKey: track.fileKey,
-      },
-      streamUrl: track.archiveUrl,
-    });
+    return reply.send(toTrackPayload(track));
   });
 
   app.get("/api/track/up-next", async (req, reply) => {
     const raw = (req.query as { exclude?: string }).exclude;
     const excludeId = typeof raw === "string" ? raw.trim() : undefined;
-    const track = randomTrackExcluding(excludeId);
+    const track = pickRandom(excludeId);
     if (!track) {
       return reply.code(503).send({
         error: "No tracks available. Check that metadata loaded correctly.",
       });
     }
-    return reply.send({
-      track: {
-        id: track.id,
-        title: track.title,
-        artist: track.artist,
-        fileKey: track.fileKey,
-      },
-      streamUrl: track.archiveUrl,
-    });
+    return reply.send(toTrackPayload(track));
+  });
+
+  app.get("/api/track/:id", async (req, reply) => {
+    const id = (req.params as { id: string }).id?.trim();
+    if (!id) return reply.code(400).send({ error: "Missing track id" });
+    const track = getById(id);
+    if (!track) return reply.code(404).send({ error: "Track not found" });
+    return reply.send(toTrackPayload(track));
+  });
+
+  app.post("/api/events", async (req, reply) => {
+    const ip = req.ip;
+    const rl = rateLimit(`events:${ip}`, 60, 60_000);
+    if (!rl.ok) {
+      return reply.code(429).send({ error: "Too many events", retryAfterSec: rl.retryAfterSec });
+    }
+    const body = req.body as {
+      type?: string;
+      trackId?: string;
+      detail?: string;
+      ms?: number;
+    };
+    const type = body?.type?.trim();
+    if (type !== "stream_error" && type !== "time_to_play") {
+      return reply.code(400).send({ error: "Invalid event type" });
+    }
+    req.log.info({ event: type, trackId: body.trackId, detail: body.detail, ms: body.ms });
+    return reply.send({ ok: true });
+  });
+
+  app.get("/api/oembed", async (req, reply) => {
+    const url = (req.query as { url?: string }).url ?? "";
+    const data = buildOEmbedResponse(url, PUBLIC_SITE_URL);
+    if (!data) return reply.code(404).send({ error: "URL not supported for oEmbed" });
+    return reply.send(data);
+  });
+
+  app.get("/.well-known/oembed", async (req, reply) => {
+    const url = (req.query as { url?: string }).url ?? "";
+    const data = buildOEmbedResponse(url, PUBLIC_SITE_URL);
+    if (!data) return reply.code(404).send({ error: "URL not supported for oEmbed" });
+    return reply.send(data);
   });
 
   if (serveStatic) {
@@ -256,14 +334,6 @@ async function main() {
         "MyMusics: SERVE_STATIC requested but dist/index.html is missing — run `npm run build` on the server.",
       );
     }
-  } else if (distExists) {
-    console.info(
-      "MyMusics: dist/ exists but SPA is disabled (SERVE_STATIC=false); GET / returns 404, /api only.",
-    );
-  } else {
-    console.info(
-      "MyMusics: API only (no dist/). Use `npm run build` or set up Vite dev; nginx should not proxy / to this port until SPA is served.",
-    );
   }
 
   await app.listen({ port: PORT, host: "0.0.0.0" });

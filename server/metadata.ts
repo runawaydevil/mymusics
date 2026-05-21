@@ -46,6 +46,29 @@ export function buildArchiveDownloadUrl(
   return `https://archive.org/download/${itemId}/${collection}.zip/${encodeURIComponent(`${collection}/${fname}`)}`;
 }
 
+/** Parse one TSV line into track metadata, or null if invalid. */
+export function parseTrackLine(line: string, itemId: string = IA_DRAGON_HOARD_ID): TrackMeta | null {
+  if (!line.trim()) return null;
+  const parts = line.split("\t");
+  if (parts.length < 4) return null;
+  const id = parts[0]!;
+  const title = parts[1]!;
+  const artist = parts[3]!;
+  const cdnUrl = parts[parts.length - 1]!;
+  const archiveUrl = buildArchiveDownloadUrl(cdnUrl, itemId);
+  if (!archiveUrl) return null;
+  const bn = basenameFromUrl(cdnUrl);
+  if (!bn) return null;
+  return {
+    id,
+    title,
+    artist,
+    fileKey: bn,
+    cdnUrl,
+    archiveUrl,
+  };
+}
+
 /**
  * Read metadata.tsv and return every track that maps to a valid Internet Archive URL.
  * Does not require local MP3 files.
@@ -59,25 +82,8 @@ export function loadTracksFromTsv(tsvPath: string, itemId: string = IA_DRAGON_HO
   const raw = fs.readFileSync(tsvPath, "utf-8");
   const lines = raw.split(/\r?\n/);
   for (const line of lines) {
-    if (!line.trim()) continue;
-    const parts = line.split("\t");
-    if (parts.length < 4) continue;
-    const id = parts[0]!;
-    const title = parts[1]!;
-    const artist = parts[3]!;
-    const cdnUrl = parts[parts.length - 1]!;
-    const archiveUrl = buildArchiveDownloadUrl(cdnUrl, itemId);
-    if (!archiveUrl) continue;
-    const bn = basenameFromUrl(cdnUrl);
-    if (!bn) continue;
-    out.push({
-      id,
-      title,
-      artist,
-      fileKey: bn,
-      cdnUrl,
-      archiveUrl,
-    });
+    const track = parseTrackLine(line, itemId);
+    if (track) out.push(track);
   }
   return out;
 }

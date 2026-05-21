@@ -1,0 +1,13 @@
+services:
+  mymusics:
+    build: .
+    ports:
+      - "38471:38471"
+    environment:
+      NODE_ENV: production
+      SERVE_STATIC: "true"
+      PORT_INDEX: "0"
+      METADATA_TSV: /app/data/metadata.tsv
+      TRACKS_DB: /app/data/tracks.db
+    volumes:
+      - ./data:/app/data

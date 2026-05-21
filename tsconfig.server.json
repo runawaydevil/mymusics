@@ -14,5 +14,5 @@
     "noUnusedParameters": true,
     "sourceMap": true
   },
-  "include": ["server/**/*.ts", "config/ports.ts"]
+  "include": ["server/**/*.ts", "config/ports.ts", "scripts/index-metadata.ts", "scripts/verify-tracks.ts", "scripts/sample-metadata.ts"]
 }
