@@ -49,7 +49,7 @@ export function TrackSearch({ onSelect, disabled }: Props) {
   );
 
   return (
-    <section className="track-search card" aria-label="Search tracks">
+    <section className="track-search card card--search" aria-label="Search tracks">
       <h2>Search</h2>
       <input
         type="search"

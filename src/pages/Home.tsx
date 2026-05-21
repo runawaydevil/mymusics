@@ -69,8 +69,29 @@ export default function Home() {
       ) : null}
       <SiteHeader nav="home" />
 
-      <main className="main">
-        <TrackSearch onSelect={(id) => void loadTrackById(id)} disabled={!!healthWarn} />
+      <main className="main main-home">
+        <div className="main-sidebar">
+          <TrackSearch onSelect={(id) => void loadTrackById(id)} disabled={!!healthWarn} />
+
+          <aside className="card history" aria-label="Recently played">
+            <h2>History</h2>
+            <ol className="history-list">
+              {history.map((t, idx) => (
+                <li key={`${t.id}-${idx}-${t.title}`}>
+                  <button
+                    type="button"
+                    className="history-hit"
+                    onClick={() => void loadTrackById(t.id)}
+                  >
+                    <span className="h-artist">{t.artist}</span>
+                    <span className="sep">—</span>
+                    <span className="h-title">{t.title}</span>
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </aside>
+        </div>
 
         <article className="card now-playing">
           <header className="card-head">
@@ -148,27 +169,8 @@ export default function Home() {
           <PlayerAttribution />
         </article>
 
-        <aside className="card history" aria-label="Recently played">
-          <h2>History</h2>
-          <ol className="history-list">
-            {history.map((t, idx) => (
-              <li key={`${t.id}-${idx}-${t.title}`}>
-                <button
-                  type="button"
-                  className="history-hit"
-                  onClick={() => void loadTrackById(t.id)}
-                >
-                  <span className="h-artist">{t.artist}</span>
-                  <span className="sep">—</span>
-                  <span className="h-title">{t.title}</span>
-                </button>
-              </li>
-            ))}
-          </ol>
-        </aside>
+        <EmbedSnippet className="main-embed" />
       </main>
-
-      <EmbedSnippet />
 
       <footer className="footer">
         <small className="muted">Developed by Pablo Murad — 2026</small>

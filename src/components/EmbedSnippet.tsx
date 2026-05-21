@@ -26,7 +26,11 @@ function buildIframeSnippet(opts: {
 ></iframe>`;
 }
 
-export function EmbedSnippet() {
+type Props = {
+  className?: string;
+};
+
+export function EmbedSnippet({ className }: Props = {}) {
   const [copied, setCopied] = useState(false);
   const [autoplay, setAutoplay] = useState(true);
   const [compact, setCompact] = useState(false);
@@ -63,7 +67,10 @@ export function EmbedSnippet() {
   }, [code]);
 
   return (
-    <section className="embed-snippet card" aria-label="Embed this player">
+    <section
+      className={["embed-snippet", "card", className].filter(Boolean).join(" ")}
+      aria-label="Embed this player"
+    >
       <h2 className="embed-snippet-title">Embed on your site</h2>
       <p className="embed-snippet-lead muted">
         Paste this HTML wherever you want the player. Optional query params:{" "}

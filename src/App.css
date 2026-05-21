@@ -1,5 +1,5 @@
 .page {
-  max-width: 880px;
+  max-width: 960px;
   margin: 0 auto;
   padding: 2rem 1.25rem 4rem;
 }
@@ -46,13 +46,57 @@
 
 .main {
   display: grid;
-  gap: 1.5rem;
+  gap: 1.25rem;
+}
+
+.main-home {
+  gap: 1.25rem;
+}
+
+.main-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
 }
 
 @media (min-width: 720px) {
-  .main {
-    grid-template-columns: 1fr 1fr;
-    align-items: start;
+  .main-home {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr);
+    grid-template-areas:
+      "sidebar player"
+      "embed embed";
+    align-items: stretch;
+    gap: 1.25rem 1.5rem;
+  }
+
+  .main-sidebar {
+    grid-area: sidebar;
+    min-height: 100%;
+  }
+
+  .main-home .now-playing {
+    grid-area: player;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .main-home .main-embed {
+    grid-area: embed;
+  }
+
+  .main-home .history {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 12rem;
+  }
+
+  .main-home .history-list {
+    flex: 1;
+    max-height: none;
+    min-height: 6rem;
+    overflow-y: auto;
   }
 }
 
@@ -390,8 +434,12 @@
 .history-list {
   margin: 0;
   padding-left: 1.1rem;
-  max-height: 22rem;
+  max-height: 14rem;
   overflow: auto;
+}
+
+.main-home .history h2 {
+  margin-bottom: 0.75rem;
 }
 
 .history-list li {
@@ -455,8 +503,12 @@
 }
 
 .footer {
-  margin-top: 2.5rem;
+  margin-top: 1.75rem;
   text-align: center;
+}
+
+.page:has(.main-home) .footer {
+  margin-top: 1.5rem;
 }
 
 .footer code {
@@ -644,6 +696,13 @@
   padding: 1.25rem 1.25rem 1.5rem;
 }
 
+.main-home .main-embed.embed-snippet {
+  max-width: none;
+  width: 100%;
+  margin: 0.25rem 0 0;
+  padding: 1.15rem 1.25rem 1.35rem;
+}
+
 .page-about .embed-snippet {
   margin-top: 1.75rem;
 }
@@ -675,6 +734,12 @@
   border-radius: 10px;
   resize: vertical;
   min-height: 8rem;
+  max-height: 10rem;
+  box-sizing: border-box;
+}
+
+.main-home .embed-snippet-code {
+  max-height: 7.5rem;
 }
 
 .embed-snippet-copy {
@@ -718,7 +783,11 @@
 }
 
 .track-search {
-  margin-bottom: 1rem;
+  margin-bottom: 0;
+}
+
+.card--search {
+  flex-shrink: 0;
 }
 
 .track-search-input {
@@ -767,6 +836,18 @@
   flex-direction: column;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
+}
+
+@media (min-width: 600px) {
+  .embed-snippet-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem 1rem;
+  }
+
+  .embed-snippet-start {
+    grid-column: 1 / -1;
+  }
 }
 
 .embed-snippet-start {
