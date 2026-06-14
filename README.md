@@ -118,7 +118,17 @@ Iframe URL: `https://mymusics.murad.gg/embed` with optional query params:
 | `theme` | `default` | `compact` — smaller layout |
 | `start` | — | Track id — loads `GET /api/track/:id` |
 | `brand` | `1` | `0` hides footer logo |
-| `muted` | `0` | `1` starts muted |
+| `muted` | `0` | `1` starts **audio** muted |
+| `preset` | `default` | Color preset: `light`, `dark`, `midnight`, `minimal` |
+| `accent` | — | Accent hex (with/without `#`) |
+| `bg` | — | Page background hex |
+| `panel` | — | Panel/card background hex |
+| `text` | — | Primary text hex |
+| `fgMuted` | — | Secondary text hex (not audio mute) |
+| `radius` | preset | Border radius 0–24 (px) |
+| `font` | `sans` | `system`, `sans`, or `serif` |
+
+Full customization guide (presets, CSS tokens, postMessage theme): **[docs/EMBED-CUSTOMIZATION.md](docs/EMBED-CUSTOMIZATION.md)**.
 
 **postMessage** (iframe → parent), payload `{ source: "mymusics", type, ... }`:
 
@@ -126,12 +136,15 @@ Iframe URL: `https://mymusics.murad.gg/embed` with optional query params:
 - `mymusics:track` — `{ id, title, artist, streamUrl }`
 - `mymusics:state` — `{ state: "playing" \| "paused" \| "buffering" \| "error" }`
 - `mymusics:error` — `{ code, message }`
+- `mymusics:theme-applied` — `{ tokens }` after a theme change
 
 Parent → iframe: `{ source: "mymusics-host", type: "mymusics:command", command: "play" \| "pause" \| "next" }`.
 
+Parent → iframe (theme): `{ source: "mymusics-host", type: "mymusics:theme", theme: { preset, accent, ... } }`.
+
 **oEmbed:** `GET /api/oembed?url=https://mymusics.murad.gg/embed`
 
-The Home and About pages include a snippet generator with these options.
+The Home and About pages include a snippet generator with preset, accent, and live preview.
 
 ## API
 

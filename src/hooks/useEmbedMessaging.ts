@@ -1,6 +1,12 @@
 import { useCallback, useEffect } from "react";
 
 import type { TrackInfo } from "./useMyMusicsPlayback";
+import {
+  parseThemePayload,
+  resolveEmbedTheme,
+  tokensToCssVars,
+  type EmbedThemeOverrides,
+} from "../lib/embedTheme";
 
 export type EmbedPlaybackState = "playing" | "paused" | "buffering" | "error";
 
@@ -24,6 +30,8 @@ type Options = {
   onNext: () => void;
   onPlay: () => void;
   onPause: () => void;
+  onTheme?: (patch: EmbedThemeOverrides) => void;
+  themeOverrides?: EmbedThemeOverrides;
 };
 
 export function useEmbedMessaging({
@@ -35,6 +43,8 @@ export function useEmbedMessaging({
   onNext,
   onPlay,
   onPause,
+  onTheme,
+  themeOverrides,
 }: Options) {
   useEffect(() => {
     if (!enabled) return;
@@ -56,6 +66,12 @@ export function useEmbedMessaging({
     post("mymusics:state", { state: playbackState });
   }, [enabled, playbackState]);
 
+  useEffect(() => {
+    if (!enabled) return;
+    const tokens = resolveEmbedTheme(themeOverrides ?? {});
+    post("mymusics:theme-applied", { tokens: tokensToCssVars(tokens) });
+  }, [enabled, themeOverrides]);
+
   const postError = useCallback(
     (code: string, message: string) => {
       if (!enabled) return;
@@ -67,9 +83,21 @@ export function useEmbedMessaging({
   useEffect(() => {
     if (!enabled) return;
     const onMessage = (ev: MessageEvent) => {
-      const data = ev.data as { source?: string; type?: string; command?: string };
+      const data = ev.data as {
+        source?: string;
+        type?: string;
+        command?: string;
+        theme?: unknown;
+      };
       if (data?.source !== "mymusics-host") return;
       if (PARENT_ORIGIN !== "*" && ev.origin !== PARENT_ORIGIN) return;
+
+      if (data.type === "mymusics:theme") {
+        const patch = parseThemePayload(data.theme);
+        if (patch && onTheme) onTheme(patch);
+        return;
+      }
+
       if (data.type !== "mymusics:command") return;
       const cmd = data.command;
       if (cmd === "play") onPlay();
@@ -78,7 +106,7 @@ export function useEmbedMessaging({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [enabled, onNext, onPlay, onPause]);
+  }, [enabled, onNext, onPlay, onPause, onTheme]);
 
   return { postError };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 
 import { CozyAudioBar } from "../components/CozyAudioBar";
@@ -6,6 +6,12 @@ import { PlayerAttribution } from "../components/PlayerAttribution";
 import { PlayerStatus } from "../components/PlayerStatus";
 import { PUBLIC_SITE_URL } from "../config/siteUrl";
 import { parseEmbedParams } from "../lib/embedParams";
+import {
+  applyEmbedTheme,
+  clearEmbedTheme,
+  mergeThemeOverrides,
+  type EmbedThemeOverrides,
+} from "../lib/embedTheme";
 import { useEmbedMessaging } from "../hooks/useEmbedMessaging";
 import { useMyMusicsPlayback } from "../hooks/useMyMusicsPlayback";
 import "../App.css";
@@ -15,13 +21,34 @@ const EMBED_ROOT_CLASS = "embed-active";
 export default function Embed() {
   const location = useLocation();
   const params = useMemo(() => parseEmbedParams(location.search), [location.search]);
+  const [runtimePatches, setRuntimePatches] = useState<Record<string, EmbedThemeOverrides>>({});
+
+  const themeOverrides = useMemo(
+    () => mergeThemeOverrides(params.themeOverrides, runtimePatches[location.search] ?? {}),
+    [params.themeOverrides, runtimePatches, location.search],
+  );
 
   useEffect(() => {
     document.documentElement.classList.add(EMBED_ROOT_CLASS);
     return () => {
       document.documentElement.classList.remove(EMBED_ROOT_CLASS);
+      clearEmbedTheme();
     };
   }, []);
+
+  useEffect(() => {
+    applyEmbedTheme(themeOverrides);
+  }, [themeOverrides]);
+
+  const handleThemePatch = useCallback(
+    (patch: EmbedThemeOverrides) => {
+      setRuntimePatches((prev) => ({
+        ...prev,
+        [location.search]: mergeThemeOverrides(prev[location.search] ?? {}, patch),
+      }));
+    },
+    [location.search],
+  );
 
   const {
     audioRef,
@@ -61,6 +88,8 @@ export default function Embed() {
     onNext: requestNextTrack,
     onPlay: handlePlay,
     onPause: handlePause,
+    onTheme: handleThemePatch,
+    themeOverrides,
   });
 
   const shellClass =

@@ -96,4 +96,7 @@ html.embed-active #root {
 
 html.embed-active body {
   overflow-x: hidden;
+  color: var(--mm-text, var(--text));
+  background-color: var(--mm-bg, var(--bg-deep));
+  background-image: none;
 }
