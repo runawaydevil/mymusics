@@ -35,9 +35,12 @@ type Props = {
   audioRef: RefObject<HTMLAudioElement | null>;
   /** No track / no usable stream */
   disabled?: boolean;
+  /** Bumped by the player when the active audio element is swapped, so the
+   *  progress/transport listeners re-bind to the newly active element. */
+  generation?: number;
 };
 
-export function CozyAudioBar({ audioRef, disabled }: Props) {
+export function CozyAudioBar({ audioRef, disabled, generation }: Props) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -119,7 +122,7 @@ export function CozyAudioBar({ audioRef, disabled }: Props) {
       window.removeEventListener("pointerup", endScrub);
       window.removeEventListener("pointercancel", endScrub);
     };
-  }, [audioRef]);
+  }, [audioRef, generation]);
 
   const dur = duration;
   const pct =

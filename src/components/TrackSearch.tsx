@@ -17,8 +17,9 @@ export function TrackSearch({ onSelect, disabled }: Props) {
   useEffect(() => {
     const trimmed = q.trim();
     if (trimmed.length < 2) {
-      setResults([]);
-      return;
+      // Defer so we don't setState synchronously in the effect body.
+      const clear = window.setTimeout(() => setResults([]), 0);
+      return () => window.clearTimeout(clear);
     }
     const t = window.setTimeout(() => {
       void (async () => {

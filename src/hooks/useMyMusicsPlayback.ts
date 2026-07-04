@@ -37,6 +37,9 @@ type HealthBody = {
 
 const MAX_ARCHIVE_STREAM_ERRORS = 3;
 
+/** How many recently played tracks to keep in the history list. */
+const HISTORY_LIMIT = 7;
+
 export type PlaybackOptions = {
   /** Initial track id from URL ?track= or embed ?start= */
   startTrackId?: string | null;
@@ -59,12 +62,23 @@ export function useMyMusicsPlayback(options: PlaybackOptions = {}) {
     onTrackChange,
   } = options;
 
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const preloadAudioRef = useRef<HTMLAudioElement>(null);
+  // Two audio elements: one plays while the other preloads the queued track, so
+  // advancing swaps to already-buffered audio instead of re-downloading it.
+  // `audioRef` always points at whichever element is currently active.
+  const elARef = useRef<HTMLAudioElement>(null);
+  const elBRef = useRef<HTMLAudioElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const activeIsBRef = useRef(false);
+  const [audioGeneration, setAudioGeneration] = useState(0);
+
   const archiveStreamErrorsRef = useRef(0);
   const upNextRef = useRef<QueuedTrack | null>(null);
   const advanceStartedAtRef = useRef<number | null>(null);
   const reportedPlayRef = useRef(false);
+  const mutedRef = useRef(startMuted);
+
+  const historyRef = useRef<TrackInfo[]>([]);
+  const cursorRef = useRef(0);
 
   const [track, setTrack] = useState<TrackInfo | null>(null);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
@@ -72,80 +86,129 @@ export function useMyMusicsPlayback(options: PlaybackOptions = {}) {
   const [status, setStatus] = useState<string>("");
   const [playbackPhase, setPlaybackPhase] = useState<PlaybackPhase>("idle");
   const [history, setHistory] = useState<TrackInfo[]>([]);
+  /** Index into `history` of the currently playing track (0 = newest). */
+  const [historyCursor, setHistoryCursor] = useState(0);
   const [autoPlay, setAutoPlay] = useState(autoAdvanceInitial);
   const [healthWarn, setHealthWarn] = useState<string | null>(null);
   const [poolTrackCount, setPoolTrackCount] = useState<number | null>(null);
   const [queueBusy, setQueueBusy] = useState(false);
+
+  const canGoPrev = history.length > historyCursor + 1;
 
   useEffect(() => {
     upNextRef.current = upNext;
   }, [upNext]);
 
   useEffect(() => {
+    historyRef.current = history;
+  }, [history]);
+
+  useEffect(() => {
     onTrackChange?.(track, streamUrl);
   }, [track, streamUrl, onTrackChange]);
+
+  const activeEl = useCallback(
+    () => (activeIsBRef.current ? elBRef.current : elARef.current),
+    [],
+  );
+  const inactiveEl = useCallback(
+    () => (activeIsBRef.current ? elARef.current : elBRef.current),
+    [],
+  );
 
   const applyTrack = useCallback(
     (info: TrackInfo, url: string, addHistory = true) => {
       setTrack(info);
       setStreamUrl(url);
-      if (addHistory) setHistory((h) => [info, ...h].slice(0, 15));
+      if (addHistory) {
+        // A brand-new track becomes the newest entry; reset the back/forward cursor.
+        setHistory((h) => [info, ...h].slice(0, HISTORY_LIMIT));
+        cursorRef.current = 0;
+        setHistoryCursor(0);
+      }
     },
     [],
   );
 
-  const playUrl = useCallback((url: string) => {
-    const a = audioRef.current;
-    if (!a) return;
-    setPlaybackPhase("buffering");
-    a.src = url;
-    a.load();
-    void a.play().catch(() => {
-      setPlaybackPhase("error");
-    });
-  }, []);
-
-  const preloadUrl = useCallback((url: string | null) => {
-    const pre = preloadAudioRef.current;
-    if (!pre || !url) return;
-    if (pre.src === url) return;
-    pre.src = url;
-    pre.load();
-  }, []);
-
-  const refillUpNext = useCallback(async (excludeId: string) => {
-    setQueueBusy(true);
-    try {
-      const res = await fetch(
-        `/api/track/up-next?exclude=${encodeURIComponent(excludeId)}`,
-      );
-      const body = (await res.json()) as RandomResponse | ErrBody;
-      if (!res.ok) {
-        setUpNext(null);
-        return;
+  /** Play `url` on the inactive element, then make it active (element swap). */
+  const playUrl = useCallback(
+    (url: string) => {
+      const next = inactiveEl();
+      const prev = activeEl();
+      if (!next) return;
+      setPlaybackPhase("buffering");
+      // If the inactive element was preloaded with this url, playback is instant.
+      if (next.src !== url) {
+        next.src = url;
+        next.load();
       }
-      const data = body as RandomResponse;
-      const queued: QueuedTrack = {
-        id: data.track.id,
-        title: data.track.title,
-        artist: data.track.artist,
-        streamUrl: data.streamUrl,
-      };
-      setUpNext(queued);
-      preloadUrl(data.streamUrl);
-    } catch {
-      setUpNext(null);
-    } finally {
-      setQueueBusy(false);
-    }
-  }, [preloadUrl]);
+      const vol = loadStoredVolume();
+      if (vol !== null) next.volume = vol;
+      next.muted = mutedRef.current;
+      // Mark `next` active before pausing `prev` so the pause handler reads
+      // the correct (playing) element and doesn't flip the phase to paused.
+      activeIsBRef.current = !activeIsBRef.current;
+      audioRef.current = next;
+      void next.play().catch(() => {
+        setPlaybackPhase("error");
+      });
+      if (prev && prev !== next) prev.pause();
+      setAudioGeneration((g) => g + 1);
+    },
+    [activeEl, inactiveEl],
+  );
 
-  const fetchTrackById = useCallback(async (id: string): Promise<RandomResponse | null> => {
-    const res = await fetch(`/api/track/${encodeURIComponent(id)}`);
-    const body = (await res.json()) as RandomResponse | ErrBody;
-    if (!res.ok) return null;
-    return body as RandomResponse;
-  }, []);
+  /** Warm the inactive element with the queued stream for an instant swap. */
+  const preloadUrl = useCallback(
+    (url: string | null) => {
+      const pre = inactiveEl();
+      if (!pre || !url) return;
+      if (pre.src === url) return;
+      pre.src = url;
+      pre.load();
+    },
+    [inactiveEl],
+  );
+
+  const refillUpNext = useCallback(
+    async (excludeId: string) => {
+      setQueueBusy(true);
+      try {
+        const res = await fetch(
+          `/api/track/up-next?exclude=${encodeURIComponent(excludeId)}`,
+        );
+        const body = (await res.json()) as RandomResponse | ErrBody;
+        if (!res.ok) {
+          setUpNext(null);
+          return;
+        }
+        const data = body as RandomResponse;
+        const queued: QueuedTrack = {
+          id: data.track.id,
+          title: data.track.title,
+          artist: data.track.artist,
+          streamUrl: data.streamUrl,
+        };
+        setUpNext(queued);
+        preloadUrl(data.streamUrl);
+      } catch {
+        setUpNext(null);
+      } finally {
+        setQueueBusy(false);
+      }
+    },
+    [preloadUrl],
+  );
+
+  const fetchTrackById = useCallback(
+    async (id: string): Promise<RandomResponse | null> => {
+      const res = await fetch(`/api/track/${encodeURIComponent(id)}`);
+      const body = (await res.json()) as RandomResponse | ErrBody;
+      if (!res.ok) return null;
+      return body as RandomResponse;
+    },
+    [],
+  );
 
   const advance = useCallback(async () => {
     setStatus("");
@@ -227,6 +290,46 @@ export function useMyMusicsPlayback(options: PlaybackOptions = {}) {
     [applyTrack, fetchTrackById, playUrl, refillUpNext],
   );
 
+  const goPrevious = useCallback(async () => {
+    const h = historyRef.current;
+    const idx = cursorRef.current + 1;
+    // Nothing older than the current position.
+    if (idx >= h.length) return;
+    const prev = h[idx]!;
+
+    setStatus("");
+    setPlaybackPhase("loading");
+    advanceStartedAtRef.current = Date.now();
+    reportedPlayRef.current = false;
+    try {
+      const data = await fetchTrackById(prev.id);
+      if (!data) {
+        setPlaybackPhase("error");
+        setStatus("Previous track is unavailable.");
+        return;
+      }
+      const info: TrackInfo = {
+        id: data.track.id,
+        title: data.track.title,
+        artist: data.track.artist,
+      };
+      // Walk back through history: update current track without re-adding to it.
+      applyTrack(info, data.streamUrl, false);
+      playUrl(data.streamUrl);
+      cursorRef.current = idx;
+      setHistoryCursor(idx);
+      await refillUpNext(info.id);
+    } catch {
+      setPlaybackPhase("error");
+      setStatus("Network error while loading previous track.");
+    }
+  }, [applyTrack, fetchTrackById, playUrl, refillUpNext]);
+
+  const requestPrevTrack = useCallback(() => {
+    archiveStreamErrorsRef.current = 0;
+    void goPrevious();
+  }, [goPrevious]);
+
   const handleAudioPlaying = useCallback(() => {
     archiveStreamErrorsRef.current = 0;
     setStatus("");
@@ -279,6 +382,27 @@ export function useMyMusicsPlayback(options: PlaybackOptions = {}) {
     void a.play().catch(() => {});
   }, []);
 
+  const onEnded = useCallback(() => {
+    if (autoPlay) void advance();
+  }, [autoPlay, advance]);
+
+  // Bind media element events to whichever element is currently active. Rebinds
+  // on every swap (audioGeneration) so handlers always follow the playing audio.
+  useEffect(() => {
+    const el = audioRef.current ?? elARef.current;
+    if (!el) return;
+    el.addEventListener("playing", handleAudioPlaying);
+    el.addEventListener("pause", handleAudioPause);
+    el.addEventListener("error", handleAudioError);
+    el.addEventListener("ended", onEnded);
+    return () => {
+      el.removeEventListener("playing", handleAudioPlaying);
+      el.removeEventListener("pause", handleAudioPause);
+      el.removeEventListener("error", handleAudioError);
+      el.removeEventListener("ended", onEnded);
+    };
+  }, [audioGeneration, handleAudioPlaying, handleAudioPause, handleAudioError, onEnded]);
+
   useEffect(() => {
     void (async () => {
       try {
@@ -306,30 +430,80 @@ export function useMyMusicsPlayback(options: PlaybackOptions = {}) {
     })();
   }, []);
 
+  // Initialise both elements' volume/mute once mounted.
   useEffect(() => {
-    const a = audioRef.current;
-    if (!a) return;
     const vol = loadStoredVolume();
-    if (vol !== null) a.volume = vol;
-    if (startMuted) a.muted = true;
-    const onVol = () => saveVolume(a.volume);
+    for (const el of [elARef.current, elBRef.current]) {
+      if (!el) continue;
+      if (vol !== null) el.volume = vol;
+      el.muted = startMuted;
+    }
+    mutedRef.current = startMuted;
+  }, [startMuted]);
+
+  // Persist volume and track mute state from the active element.
+  useEffect(() => {
+    const a = audioRef.current ?? elARef.current;
+    if (!a) return;
+    const onVol = () => {
+      saveVolume(a.volume);
+      mutedRef.current = a.muted;
+    };
     a.addEventListener("volumechange", onVol);
     return () => a.removeEventListener("volumechange", onVol);
-  }, [startMuted]);
+  }, [audioGeneration]);
+
+  // Media Session API: OS/lock-screen metadata + hardware media keys.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    const ms = navigator.mediaSession;
+    if (track) {
+      try {
+        ms.metadata = new MediaMetadata({
+          title: track.title,
+          artist: track.artist,
+          album: "The Myspace Dragon Hoard",
+          artwork: [{ src: "/mymusics.png", sizes: "200x80", type: "image/png" }],
+        });
+      } catch {
+        /* MediaMetadata unsupported */
+      }
+    }
+    ms.setActionHandler("play", () => handlePlay());
+    ms.setActionHandler("pause", () => handlePause());
+    ms.setActionHandler("nexttrack", () => requestNextTrack());
+    ms.setActionHandler("previoustrack", () => {
+      if (canGoPrev) requestPrevTrack();
+    });
+    return () => {
+      ms.setActionHandler("play", null);
+      ms.setActionHandler("pause", null);
+      ms.setActionHandler("nexttrack", null);
+      ms.setActionHandler("previoustrack", null);
+    };
+  }, [track, canGoPrev, handlePlay, handlePause, requestNextTrack, requestPrevTrack]);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    navigator.mediaSession.playbackState =
+      playbackPhase === "playing"
+        ? "playing"
+        : playbackPhase === "paused"
+          ? "paused"
+          : "none";
+  }, [playbackPhase]);
 
   useEffect(() => {
     if (!autoplayOnMount) return;
-    if (startTrackId) {
-      void loadTrackById(startTrackId);
-      return;
-    }
-    void advance();
+    // Defer the initial load out of the effect body so the bootstrap doesn't
+    // trigger a synchronous cascade of setState calls during commit.
+    const id = setTimeout(() => {
+      if (startTrackId) void loadTrackById(startTrackId);
+      else void advance();
+    }, 0);
+    return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount bootstrap
   }, []);
-
-  const onEnded = useCallback(() => {
-    if (autoPlay) void advance();
-  }, [autoPlay, advance]);
 
   const showUpNextHint =
     poolTrackCount === 1 && track && upNext && upNext.id === track.id;
@@ -347,7 +521,9 @@ export function useMyMusicsPlayback(options: PlaybackOptions = {}) {
 
   return {
     audioRef,
-    preloadAudioRef,
+    audioElARef: elARef,
+    audioElBRef: elBRef,
+    audioGeneration,
     track,
     streamUrl,
     upNext,
@@ -355,19 +531,18 @@ export function useMyMusicsPlayback(options: PlaybackOptions = {}) {
     playbackPhase,
     embedPlaybackState,
     history,
+    historyCursor,
     autoPlay,
     setAutoPlay,
     healthWarn,
     poolTrackCount,
     queueBusy,
     requestNextTrack,
+    requestPrevTrack,
+    canGoPrev,
     loadTrackById,
-    handleAudioPlaying,
-    handleAudioError,
     handlePlay,
     handlePause,
-    handleAudioPause,
-    onEnded,
     showUpNextHint,
   };
 }

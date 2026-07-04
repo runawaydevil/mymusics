@@ -39,6 +39,7 @@ export function rebuildFts(db: Database.Database): void {
 
 export class TrackStore {
   protected db: Database.Database | null = null;
+  private maxRowidCache: number | null = null;
 
   constructor(private readonly dbPath: string) {}
 
@@ -114,27 +115,50 @@ export class TrackStore {
     return row ? rowToMeta(row) : null;
   }
 
+  /** Highest rowid in `tracks`, cached for the store's lifetime (rowids are stable). */
+  private maxRowid(): number {
+    if (this.maxRowidCache !== null) return this.maxRowidCache;
+    const row = this.requireDb()
+      .prepare(`SELECT MAX(rowid) AS m FROM tracks`)
+      .get() as { m: number | null };
+    this.maxRowidCache = row.m ?? 0;
+    return this.maxRowidCache;
+  }
+
+  /**
+   * Pick a random track without an `ORDER BY RANDOM()` full-table scan/sort.
+   * Samples a random rowid and takes the first non-blocked track at or after it
+   * (wrapping to the start if the sample lands past the last row). O(log n) via
+   * the primary-key index instead of O(n log n).
+   */
   random(excludeId?: string): TrackMeta | null {
     const db = this.requireDb();
+    const max = this.maxRowid();
+    if (max <= 0) return null;
     const ex = excludeId?.trim();
-    if (ex) {
-      const row = db
-        .prepare(
-          `SELECT id, title, artist, file_key, cdn_url, archive_url FROM tracks t
-           WHERE t.id != ?
-           AND NOT EXISTS (SELECT 1 FROM blocked_ids b WHERE b.id = t.id)
-           ORDER BY RANDOM() LIMIT 1`,
-        )
-        .get(ex) as Row | undefined;
-      if (row) return rowToMeta(row);
+
+    const COLS = `id, title, artist, file_key, cdn_url, archive_url`;
+    const pickAtOrAfter = db.prepare(
+      `SELECT ${COLS} FROM tracks t
+       WHERE t.rowid >= ?
+       AND NOT EXISTS (SELECT 1 FROM blocked_ids b WHERE b.id = t.id)
+       ORDER BY t.rowid LIMIT 1`,
+    );
+    const pickFirst = db.prepare(
+      `SELECT ${COLS} FROM tracks t
+       WHERE NOT EXISTS (SELECT 1 FROM blocked_ids b WHERE b.id = t.id)
+       ORDER BY t.rowid LIMIT 1`,
+    );
+
+    // A few attempts so we can skip the excluded id without another full scan.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const target = 1 + Math.floor(Math.random() * max);
+      const row = (pickAtOrAfter.get(target) ?? pickFirst.get()) as Row | undefined;
+      if (!row) return null;
+      if (ex && row.id === ex && max > 1) continue;
+      return rowToMeta(row);
     }
-    const row = db
-      .prepare(
-        `SELECT id, title, artist, file_key, cdn_url, archive_url FROM tracks t
-         WHERE NOT EXISTS (SELECT 1 FROM blocked_ids b WHERE b.id = t.id)
-         ORDER BY RANDOM() LIMIT 1`,
-      )
-      .get() as Row | undefined;
+    const row = pickFirst.get() as Row | undefined;
     return row ? rowToMeta(row) : null;
   }
 

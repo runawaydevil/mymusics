@@ -4,9 +4,10 @@ type Options = {
   audioRef: RefObject<HTMLAudioElement | null>;
   enabled: boolean;
   onNext: () => void;
+  onPrev?: () => void;
 };
 
-export function usePlayerKeyboard({ audioRef, enabled, onNext }: Options) {
+export function usePlayerKeyboard({ audioRef, enabled, onNext, onPrev }: Options) {
   useEffect(() => {
     if (!enabled) return;
     const onKey = (e: KeyboardEvent) => {
@@ -21,6 +22,9 @@ export function usePlayerKeyboard({ audioRef, enabled, onNext }: Options) {
       } else if (e.key === "n" || e.key === "N") {
         e.preventDefault();
         onNext();
+      } else if (e.key === "p" || e.key === "P") {
+        e.preventDefault();
+        onPrev?.();
       } else if (e.key === "m" || e.key === "M") {
         e.preventDefault();
         a.muted = !a.muted;
@@ -28,5 +32,5 @@ export function usePlayerKeyboard({ audioRef, enabled, onNext }: Options) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [audioRef, enabled, onNext]);
+  }, [audioRef, enabled, onNext, onPrev]);
 }

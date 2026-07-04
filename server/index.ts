@@ -244,14 +244,29 @@ async function main() {
     }
   });
 
+  // Throttle track reads per IP. Generous enough for normal use (mount fires a
+  // few requests; each Next/search is one) while capping abuse of the DB-backed
+  // endpoints. Returns true when the request may proceed.
+  const TRACK_READS_PER_MIN = 240;
+  function allowTrackRead(req: { ip: string }, reply: import("fastify").FastifyReply): boolean {
+    const rl = rateLimit(`track:${req.ip}`, TRACK_READS_PER_MIN, 60_000);
+    if (!rl.ok) {
+      reply.code(429).send({ error: "Too many requests", retryAfterSec: rl.retryAfterSec });
+      return false;
+    }
+    return true;
+  }
+
   app.get("/api/track/search", async (req, reply) => {
+    if (!allowTrackRead(req, reply)) return reply;
     const q = (req.query as { q?: string }).q ?? "";
     const limitRaw = (req.query as { limit?: string }).limit;
     const limit = limitRaw ? Math.min(50, Math.max(1, Number(limitRaw) || 20)) : 20;
     return reply.send({ tracks: searchTracks(q, limit) });
   });
 
-  app.get("/api/track/random", async (_req, reply) => {
+  app.get("/api/track/random", async (req, reply) => {
+    if (!allowTrackRead(req, reply)) return reply;
     const track = pickRandom();
     if (!track) {
       return reply.code(503).send({
@@ -262,6 +277,7 @@ async function main() {
   });
 
   app.get("/api/track/up-next", async (req, reply) => {
+    if (!allowTrackRead(req, reply)) return reply;
     const raw = (req.query as { exclude?: string }).exclude;
     const excludeId = typeof raw === "string" ? raw.trim() : undefined;
     const track = pickRandom(excludeId);
@@ -274,6 +290,7 @@ async function main() {
   });
 
   app.get("/api/track/:id", async (req, reply) => {
+    if (!allowTrackRead(req, reply)) return reply;
     const id = (req.params as { id: string }).id?.trim();
     if (!id) return reply.code(400).send({ error: "Missing track id" });
     const track = getById(id);

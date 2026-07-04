@@ -19,29 +19,35 @@ export default function Home() {
 
   const {
     audioRef,
-    preloadAudioRef,
+    audioElARef,
+    audioElBRef,
+    audioGeneration,
     track,
     status,
     playbackPhase,
     upNext,
     history,
+    historyCursor,
     autoPlay,
     setAutoPlay,
     healthWarn,
     queueBusy,
     requestNextTrack,
+    requestPrevTrack,
+    canGoPrev,
     loadTrackById,
-    handleAudioPlaying,
-    handleAudioError,
-    handleAudioPause,
-    onEnded,
     showUpNextHint,
   } = useMyMusicsPlayback({
     startTrackId,
     autoplayOnMount: true,
   });
 
-  usePlayerKeyboard({ audioRef, enabled: true, onNext: requestNextTrack });
+  usePlayerKeyboard({
+    audioRef,
+    enabled: true,
+    onNext: requestNextTrack,
+    onPrev: requestPrevTrack,
+  });
 
   const copyShareLink = useCallback(async () => {
     if (!track) return;
@@ -75,21 +81,39 @@ export default function Home() {
 
           <aside className="card history" aria-label="Recently played">
             <h2>History</h2>
-            <ol className="history-list">
-              {history.map((t, idx) => (
-                <li key={`${t.id}-${idx}-${t.title}`}>
-                  <button
-                    type="button"
-                    className="history-hit"
-                    onClick={() => void loadTrackById(t.id)}
-                  >
-                    <span className="h-artist">{t.artist}</span>
-                    <span className="sep">—</span>
-                    <span className="h-title">{t.title}</span>
-                  </button>
-                </li>
-              ))}
-            </ol>
+            {history.length === 0 ? (
+              <p className="history-empty muted">Nothing played yet.</p>
+            ) : (
+              <ol className="history-list">
+                {history.map((t, idx) => {
+                  const isCurrent = idx === historyCursor;
+                  return (
+                    <li
+                      key={`${t.id}-${idx}-${t.title}`}
+                      className={isCurrent ? "history-item history-item--current" : "history-item"}
+                    >
+                      <button
+                        type="button"
+                        className="history-hit"
+                        onClick={() => void loadTrackById(t.id)}
+                        aria-current={isCurrent ? "true" : undefined}
+                      >
+                        <span className="history-eq" aria-hidden="true">
+                          <i />
+                          <i />
+                          <i />
+                        </span>
+                        <span className="history-text">
+                          <span className="h-artist">{t.artist}</span>
+                          <span className="sep">—</span>
+                          <span className="h-title">{t.title}</span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
           </aside>
         </div>
 
@@ -103,8 +127,19 @@ export default function Home() {
             ) : null}
           </header>
           {track ? (
-            <div className="track-block">
-              <p className="artist">{track.artist}</p>
+            <div className="track-block" role="status" aria-live="polite" aria-atomic="true">
+              <p className="artist">
+                <span
+                  className={`np-eq${playbackPhase === "playing" ? " np-eq--on" : ""}`}
+                  aria-hidden="true"
+                >
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                {track.artist}
+              </p>
               <p className="title">{track.title}</p>
             </div>
           ) : (
@@ -135,24 +170,50 @@ export default function Home() {
 
           <div className="player-nook">
             <audio
-              ref={audioRef}
+              ref={audioElARef}
               className="audio-hidden"
-              preload="metadata"
+              preload="auto"
               tabIndex={-1}
               aria-hidden="true"
-              onEnded={onEnded}
-              onPlaying={handleAudioPlaying}
-              onPause={handleAudioPause}
-              onError={handleAudioError}
             />
-            <audio ref={preloadAudioRef} className="audio-hidden" preload="auto" aria-hidden="true" />
-            <CozyAudioBar audioRef={audioRef} disabled={!track} />
+            <audio
+              ref={audioElBRef}
+              className="audio-hidden"
+              preload="auto"
+              tabIndex={-1}
+              aria-hidden="true"
+            />
+            <CozyAudioBar audioRef={audioRef} generation={audioGeneration} disabled={!track} />
             <PlayerStatus phase={playbackPhase} status={status} hasTrack={!!track} />
 
             <div className="actions">
-              <button type="button" className="btn primary" onClick={() => void requestNextTrack()}>
-                Next
-              </button>
+              <div className="transport" role="group" aria-label="Transport controls">
+                <button
+                  type="button"
+                  className="btn btn-icon"
+                  onClick={() => void requestPrevTrack()}
+                  disabled={!canGoPrev}
+                  aria-label="Previous track"
+                  title="Previous (P)"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true" className="btn-glyph">
+                    <path d="M7 6v12H5V6h2zm12 0v12l-9-6 9-6z" fill="currentColor" />
+                  </svg>
+                  <span>Prev</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn primary btn-icon"
+                  onClick={() => void requestNextTrack()}
+                  aria-label="Next track"
+                  title="Next (N)"
+                >
+                  <span>Next</span>
+                  <svg viewBox="0 0 24 24" aria-hidden="true" className="btn-glyph">
+                    <path d="M17 6v12h2V6h-2zM5 6v12l9-6-9-6z" fill="currentColor" />
+                  </svg>
+                </button>
+              </div>
               <label className="check">
                 <input
                   type="checkbox"
@@ -163,7 +224,7 @@ export default function Home() {
               </label>
             </div>
             <p className="player-keys-hint muted">
-              Shortcuts: Space play/pause, N next, M mute
+              Shortcuts: Space play/pause, P previous, N next, M mute
             </p>
           </div>
           <PlayerAttribution />

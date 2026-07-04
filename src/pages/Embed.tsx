@@ -52,7 +52,9 @@ export default function Embed() {
 
   const {
     audioRef,
-    preloadAudioRef,
+    audioElARef,
+    audioElBRef,
+    audioGeneration,
     track,
     streamUrl,
     upNext,
@@ -65,12 +67,10 @@ export default function Embed() {
     poolTrackCount,
     queueBusy,
     requestNextTrack,
-    handleAudioPlaying,
-    handleAudioError,
-    handleAudioPause,
+    requestPrevTrack,
+    canGoPrev,
     handlePlay,
     handlePause,
-    onEnded,
     showUpNextHint,
   } = useMyMusicsPlayback({
     startTrackId: params.startId,
@@ -110,8 +110,19 @@ export default function Embed() {
             <h2>Now playing</h2>
           </header>
           {track ? (
-            <div className="track-block">
-              <p className="artist">{track.artist}</p>
+            <div className="track-block" role="status" aria-live="polite" aria-atomic="true">
+              <p className="artist">
+                <span
+                  className={`np-eq${playbackPhase === "playing" ? " np-eq--on" : ""}`}
+                  aria-hidden="true"
+                >
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                {track.artist}
+              </p>
               <p className="title">{track.title}</p>
             </div>
           ) : (
@@ -142,24 +153,48 @@ export default function Embed() {
 
           <div className="player-nook">
             <audio
-              ref={audioRef}
+              ref={audioElARef}
               className="audio-hidden"
-              preload="metadata"
+              preload="auto"
               tabIndex={-1}
               aria-hidden="true"
-              onEnded={onEnded}
-              onPlaying={handleAudioPlaying}
-              onPause={handleAudioPause}
-              onError={handleAudioError}
             />
-            <audio ref={preloadAudioRef} className="audio-hidden" preload="auto" aria-hidden="true" />
-            <CozyAudioBar audioRef={audioRef} disabled={!track} />
+            <audio
+              ref={audioElBRef}
+              className="audio-hidden"
+              preload="auto"
+              tabIndex={-1}
+              aria-hidden="true"
+            />
+            <CozyAudioBar audioRef={audioRef} generation={audioGeneration} disabled={!track} />
             <PlayerStatus phase={playbackPhase} status={status} hasTrack={!!track} compact />
 
             <div className="actions">
-              <button type="button" className="btn primary" onClick={() => void requestNextTrack()}>
-                Next
-              </button>
+              <div className="transport" role="group" aria-label="Transport controls">
+                <button
+                  type="button"
+                  className="btn btn-icon"
+                  onClick={() => void requestPrevTrack()}
+                  disabled={!canGoPrev}
+                  aria-label="Previous track"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true" className="btn-glyph">
+                    <path d="M7 6v12H5V6h2zm12 0v12l-9-6 9-6z" fill="currentColor" />
+                  </svg>
+                  <span>Prev</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn primary btn-icon"
+                  onClick={() => void requestNextTrack()}
+                  aria-label="Next track"
+                >
+                  <span>Next</span>
+                  <svg viewBox="0 0 24 24" aria-hidden="true" className="btn-glyph">
+                    <path d="M17 6v12h2V6h-2zM5 6v12l9-6-9-6z" fill="currentColor" />
+                  </svg>
+                </button>
+              </div>
               {params.autoplay ? (
                 <label className="check">
                   <input
